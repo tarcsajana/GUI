@@ -19,12 +19,18 @@
 
 #define PORT 4210
 // WiFi Configuration - Update these with your network credentials
-#define WIFI_SSID "HuNor"
-#define WIFI_PASSWORD "1234554321"
+#define WIFI_SSID "HunorCar"
+#define WIFI_PASSWORD "Jucymucy8581"
 
 // WiFi event bits
 #define WIFI_CONNECTED_BIT BIT0
 #define WIFI_FAIL_BIT BIT1
+
+// Chart data storage
+#define CHART_DATA_POINTS 60
+static float kw_data[CHART_DATA_POINTS];
+static float soc_data[CHART_DATA_POINTS];
+static int data_index = 0;
 
 static EventGroupHandle_t s_wifi_event_group;
 static int s_retry_num = 0;
@@ -44,10 +50,59 @@ extern lv_obj_t * ui_labelcelltemp;
 extern lv_obj_t * ui_labelvolt;
 extern lv_obj_t * ui_wifi;
 
-// Data processing function - now updates UI elements
+// Screen2 chart elements
+extern lv_obj_t * ui_Kwchart;
+extern lv_obj_t * uic_Kwchart;
+
+// Function to update chart data
+void update_chart_data(float kw_value, float soc_value) {
+    // Store data in circular buffer
+    kw_data[data_index] = kw_value;
+    soc_data[data_index] = soc_value;
+    
+    // Move to next index (circular buffer)
+    data_index = (data_index + 1) % CHART_DATA_POINTS;
+    
+    // Update chart if Screen2 is active and chart exists
+    if (ui_Kwchart != NULL && lvgl_port_lock(100)) {
+        // Get chart series
+        lv_chart_series_t * kw_series = lv_chart_get_series_next(ui_Kwchart, NULL);
+        lv_chart_series_t * soc_series = lv_chart_get_series_next(ui_Kwchart, kw_series);
+        
+        if (kw_series && soc_series) {
+            // Clear existing data
+            lv_chart_set_all_value(ui_Kwchart, kw_series, LV_CHART_POINT_NONE);
+            lv_chart_set_all_value(ui_Kwchart, soc_series, LV_CHART_POINT_NONE);
+            
+            // Add data points in order (oldest to newest)
+            for (int i = 0; i < CHART_DATA_POINTS; i++) {
+                int idx = (data_index + i) % CHART_DATA_POINTS;
+                
+                // Add kW data (series 1) - range is -60 to +42 kW
+                lv_chart_set_next_value(ui_Kwchart, kw_series, (lv_coord_t)kw_data[idx]);
+                
+                // Add SOC data (series 2) - range is 0 to 100%
+                lv_chart_set_next_value(ui_Kwchart, soc_series, (lv_coord_t)soc_data[idx]);
+            }
+            
+            // Refresh the chart
+            lv_chart_refresh(ui_Kwchart);
+        }
+        
+        lvgl_port_unlock();
+    }
+}
+
+// Data processing function - now updates UI elements and chart
 void process_received_data(float soc, float range, float temp, float amp, float volt, float watt) {
     ESP_LOGI(TAG, "Received data - SOC: %.1f%%, Range: %.1f km, Temp: %.1f°C, Amp: %.1f A, Volt: %.1f V, Watt: %.1f W", 
              soc, range, temp, amp, volt, watt);
+    
+    // Convert watts to kW
+    float watt_kw = watt / 1000.0;
+    
+    // Update chart data
+    update_chart_data(watt_kw, soc);
     
     // Update UI elements - must be done with LVGL lock
     if (lvgl_port_lock(-1)) {
@@ -62,30 +117,45 @@ void process_received_data(float soc, float range, float temp, float amp, float 
         snprintf(range_text, sizeof(range_text), "%.1f km", range);
         lv_label_set_text(ui_Range, range_text);       
     
-        // Update battery watts
+        // Update battery watts - CONVERT TO kW
         char watt_text[16];
-        snprintf(watt_text, sizeof(watt_text), "%.1f", watt);
+        snprintf(watt_text, sizeof(watt_text), "%.1f", watt_kw);
         lv_label_set_text(ui_labelbattw, watt_text);
-        // Update arc value (assuming max 50kW for scaling)
-        lv_arc_set_value(ui_battw, (int)(watt * 42 / 50));
+        
+        // Update arc value for watts (-60kW to +42kW range mapped to 0-100)
+        int watt_arc_value = (int)((watt_kw + 60.0) * 100.0 / 102.0);  // Map -60 to +42 onto 0-100
+        watt_arc_value = (watt_arc_value < 0) ? 0 : (watt_arc_value > 100) ? 100 : watt_arc_value;  // Clamp
+        lv_arc_set_value(ui_battw, watt_arc_value);
+        
         // Update battery amps
         char amp_text[16];
         snprintf(amp_text, sizeof(amp_text), "%.1f", amp);
         lv_label_set_text(ui_labelbattamps, amp_text);
-        // Update arc value (assuming max 200A for scaling)
-        lv_arc_set_value(ui_battamps, (int)(amp * 42 / 150));
+        
+        // Update arc value for amps (assuming -150A to +150A range, adjust as needed)
+        int amp_arc_value = (int)((amp + 150.0) * 100.0 / 300.0);  // Map -150 to +150 onto 0-100
+        amp_arc_value = (amp_arc_value < 0) ? 0 : (amp_arc_value > 100) ? 100 : amp_arc_value;  // Clamp
+        lv_arc_set_value(ui_battamps, amp_arc_value);
+        
         // Update cell temperature
         char temp_text[16];
         snprintf(temp_text, sizeof(temp_text), "%.1f°C", temp);
         lv_label_set_text(ui_labelcelltemp, temp_text);
-        // Update arc value (assuming max 60°C for scaling)
-        lv_arc_set_value(ui_celltemp, (int)(temp * 42 / 60));
+        
+        // Update arc value for temperature (0°C to 60°C range)
+        int temp_arc_value = (int)(temp * 100.0 / 60.0);  // Map 0 to 60 onto 0-100
+        temp_arc_value = (temp_arc_value < 0) ? 0 : (temp_arc_value > 100) ? 100 : temp_arc_value;  // Clamp
+        lv_arc_set_value(ui_celltemp, temp_arc_value);
+        
         // Update voltage
         char volt_text[16];
         snprintf(volt_text, sizeof(volt_text), "%.1f", volt);
         lv_label_set_text(ui_labelvolt, volt_text);
-        // Update arc value (assuming max 500V for scaling)
-        lv_arc_set_value(ui_volts, (int)(volt * 42 / 500));
+        
+        // Update arc value for voltage (assuming 0V to 500V range, adjust as needed)
+        int volt_arc_value = (int)(volt * 100.0 / 370.0);  // Map 0 to 500 onto 0-100
+        volt_arc_value = (volt_arc_value < 0) ? 0 : (volt_arc_value > 100) ? 100 : volt_arc_value;  // Clamp
+        lv_arc_set_value(ui_volts, volt_arc_value);
       
         // WiFi status is now updated by the periodic task
         lv_label_set_text(ui_wifi, "Connected");
@@ -245,10 +315,16 @@ void udp_server_task(void *pvParameters) {
 
 void app_main()
 {
-     waveshare_esp32_s3_rgb_lcd_init(); // Initialize the Waveshare ESP32-S3 RGB LCD 
+    // Initialize chart data arrays
+    for (int i = 0; i < CHART_DATA_POINTS; i++) {
+        kw_data[i] = 0.0;
+        soc_data[i] = 0.0;
+    }
+    
+    waveshare_esp32_s3_rgb_lcd_init(); // Initialize the Waveshare ESP32-S3 RGB LCD 
     // wavesahre_rgb_lcd_bl_on();  //Turn on the screen backlight 
     // wavesahre_rgb_lcd_bl_off(); //Turn off the screen backlight 
-     // Initialize NVS
+    // Initialize NVS
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
         ESP_ERROR_CHECK(nvs_flash_erase());

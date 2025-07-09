@@ -13,12 +13,13 @@ extern "C" {
 // SCREEN: ui_Livedata
 extern void ui_Livedata_screen_init(void);
 extern void ui_Livedata_screen_destroy(void);
+extern void ui_event_Livedata(lv_event_t * e);
 extern lv_obj_t * ui_Livedata;
 extern lv_obj_t * ui_SOCbar;
 extern lv_obj_t * ui_SOC;
 extern lv_obj_t * ui_Range;
+extern void ui_event_battw(lv_event_t * e);
 extern lv_obj_t * ui_battw;
-extern lv_obj_t * ui_Arc2;
 extern lv_obj_t * ui_battamps;
 extern lv_obj_t * ui_celltemp;
 extern lv_obj_t * ui_volts;

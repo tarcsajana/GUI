@@ -2,6 +2,7 @@ file(GLOB_RECURSE srcs *.c
                     ui/*.c
                    ui/components/*.c
                    ui/screens/*.c
+                   ui/images/*.c
                    )
 set(include_dirs
     .

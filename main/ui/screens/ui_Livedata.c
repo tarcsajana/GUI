@@ -23,7 +23,6 @@ lv_obj_t * ui_SOCbar = NULL;
 lv_obj_t * ui_SOC = NULL;
 lv_obj_t * ui_Range = NULL;
 lv_obj_t * ui_battw = NULL;
-lv_obj_t * ui_Arc2 = NULL;
 lv_obj_t * ui_battamps = NULL;
 lv_obj_t * ui_celltemp = NULL;
 lv_obj_t * ui_volts = NULL;
@@ -37,6 +36,24 @@ lv_obj_t * ui_labelcelltemp = NULL;
 lv_obj_t * ui_labelvolt = NULL;
 lv_obj_t * ui_wifi = NULL;
 // event funtions
+void ui_event_Livedata(lv_event_t * e)
+{
+    lv_event_code_t event_code = lv_event_get_code(e);
+
+    if(event_code == LV_EVENT_GESTURE &&  lv_indev_get_gesture_dir(lv_indev_get_act()) == LV_DIR_LEFT) {
+        lv_indev_wait_release(lv_indev_get_act());
+        _ui_screen_change(&ui_Screen2, LV_SCR_LOAD_ANIM_FADE_ON, 100, 0, &ui_Screen2_screen_init);
+    }
+}
+
+void ui_event_battw(lv_event_t * e)
+{
+    lv_event_code_t event_code = lv_event_get_code(e);
+
+    if(event_code == LV_EVENT_CLICKED) {
+        _ui_screen_change(&ui_Screen2, LV_SCR_LOAD_ANIM_FADE_ON, 500, 0, &ui_Screen2_screen_init);
+    }
+}
 
 // build funtions
 
@@ -44,6 +61,10 @@ void ui_Livedata_screen_init(void)
 {
     ui_Livedata = lv_obj_create(NULL);
     lv_obj_clear_flag(ui_Livedata, LV_OBJ_FLAG_SCROLLABLE);      /// Flags
+    lv_obj_set_style_bg_img_src(ui_Livedata, &ui_img_logomitsu2_png, LV_PART_MAIN | LV_STATE_DEFAULT);
+
+    lv_obj_set_style_bg_color(ui_Livedata, lv_color_hex(0xFFFFFF), LV_PART_SCROLLBAR | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_opa(ui_Livedata, 255, LV_PART_SCROLLBAR | LV_STATE_DEFAULT);
 
     ui_SOCbar = lv_bar_create(ui_Livedata);
     lv_bar_set_value(ui_SOCbar, 25, LV_ANIM_OFF);
@@ -97,29 +118,11 @@ void ui_Livedata_screen_init(void)
     lv_obj_set_style_bg_color(ui_battw, lv_color_hex(0xFFFFFF), LV_PART_KNOB | LV_STATE_DEFAULT);
     lv_obj_set_style_bg_opa(ui_battw, 0, LV_PART_KNOB | LV_STATE_DEFAULT);
 
-    ui_Arc2 = lv_arc_create(ui_Livedata);
-    lv_obj_set_width(ui_Arc2, 200);
-    lv_obj_set_height(ui_Arc2, 200);
-    lv_obj_set_x(ui_Arc2, -113);
-    lv_obj_set_y(ui_Arc2, -60);
-    lv_obj_set_align(ui_Arc2, LV_ALIGN_CENTER);
-    lv_arc_set_range(ui_Arc2, 0, 42);
-    lv_arc_set_value(ui_Arc2, 15);
-    lv_arc_set_bg_angles(ui_Arc2, 180, 0);
-    lv_obj_set_style_arc_width(ui_Arc2, 20, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_arc_rounded(ui_Arc2, false, LV_PART_MAIN | LV_STATE_DEFAULT);
-
-    lv_obj_set_style_arc_width(ui_Arc2, 20, LV_PART_INDICATOR | LV_STATE_DEFAULT);
-    lv_obj_set_style_arc_rounded(ui_Arc2, false, LV_PART_INDICATOR | LV_STATE_DEFAULT);
-
-    lv_obj_set_style_bg_color(ui_Arc2, lv_color_hex(0xFFFFFF), LV_PART_KNOB | LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_opa(ui_Arc2, 0, LV_PART_KNOB | LV_STATE_DEFAULT);
-
     ui_battamps = lv_arc_create(ui_Livedata);
     lv_obj_set_width(ui_battamps, 200);
     lv_obj_set_height(ui_battamps, 200);
-    lv_obj_set_x(ui_battamps, -117);
-    lv_obj_set_y(ui_battamps, -60);
+    lv_obj_set_x(ui_battamps, -347);
+    lv_obj_set_y(ui_battamps, 145);
     lv_obj_set_align(ui_battamps, LV_ALIGN_CENTER);
     lv_arc_set_range(ui_battamps, 0, 42);
     lv_arc_set_value(ui_battamps, 15);
@@ -136,8 +139,8 @@ void ui_Livedata_screen_init(void)
     ui_celltemp = lv_arc_create(ui_Livedata);
     lv_obj_set_width(ui_celltemp, 200);
     lv_obj_set_height(ui_celltemp, 200);
-    lv_obj_set_x(ui_celltemp, 114);
-    lv_obj_set_y(ui_celltemp, -60);
+    lv_obj_set_x(ui_celltemp, 346);
+    lv_obj_set_y(ui_celltemp, 166);
     lv_obj_set_align(ui_celltemp, LV_ALIGN_CENTER);
     lv_arc_set_range(ui_celltemp, 0, 42);
     lv_arc_set_value(ui_celltemp, 15);
@@ -181,8 +184,8 @@ void ui_Livedata_screen_init(void)
     ui_Label1 = lv_label_create(ui_Livedata);
     lv_obj_set_width(ui_Label1, LV_SIZE_CONTENT);   /// 1
     lv_obj_set_height(ui_Label1, LV_SIZE_CONTENT);    /// 1
-    lv_obj_set_x(ui_Label1, -113);
-    lv_obj_set_y(ui_Label1, -85);
+    lv_obj_set_x(ui_Label1, -350);
+    lv_obj_set_y(ui_Label1, 127);
     lv_obj_set_align(ui_Label1, LV_ALIGN_CENTER);
     lv_label_set_text(ui_Label1, "A");
     lv_obj_set_style_text_font(ui_Label1, &lv_font_montserrat_30, LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -190,8 +193,8 @@ void ui_Livedata_screen_init(void)
     ui_Label2 = lv_label_create(ui_Livedata);
     lv_obj_set_width(ui_Label2, LV_SIZE_CONTENT);   /// 1
     lv_obj_set_height(ui_Label2, LV_SIZE_CONTENT);    /// 1
-    lv_obj_set_x(ui_Label2, 113);
-    lv_obj_set_y(ui_Label2, -85);
+    lv_obj_set_x(ui_Label2, 350);
+    lv_obj_set_y(ui_Label2, 148);
     lv_obj_set_align(ui_Label2, LV_ALIGN_CENTER);
     lv_label_set_text(ui_Label2, "Cells");
     lv_obj_set_style_text_font(ui_Label2, &lv_font_montserrat_30, LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -216,16 +219,16 @@ void ui_Livedata_screen_init(void)
     ui_labelbattamps = lv_label_create(ui_Livedata);
     lv_obj_set_width(ui_labelbattamps, LV_SIZE_CONTENT);   /// 1
     lv_obj_set_height(ui_labelbattamps, LV_SIZE_CONTENT);    /// 1
-    lv_obj_set_x(ui_labelbattamps, -115);
-    lv_obj_set_y(ui_labelbattamps, -8);
+    lv_obj_set_x(ui_labelbattamps, -348);
+    lv_obj_set_y(ui_labelbattamps, 204);
     lv_obj_set_align(ui_labelbattamps, LV_ALIGN_CENTER);
     lv_obj_set_style_text_font(ui_labelbattamps, &lv_font_montserrat_40, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     ui_labelcelltemp = lv_label_create(ui_Livedata);
     lv_obj_set_width(ui_labelcelltemp, LV_SIZE_CONTENT);   /// 1
     lv_obj_set_height(ui_labelcelltemp, LV_SIZE_CONTENT);    /// 1
-    lv_obj_set_x(ui_labelcelltemp, 112);
-    lv_obj_set_y(ui_labelcelltemp, -6);
+    lv_obj_set_x(ui_labelcelltemp, 355);
+    lv_obj_set_y(ui_labelcelltemp, 209);
     lv_obj_set_align(ui_labelcelltemp, LV_ALIGN_CENTER);
     lv_obj_set_style_text_font(ui_labelcelltemp, &lv_font_montserrat_40, LV_PART_MAIN | LV_STATE_DEFAULT);
 
@@ -245,6 +248,8 @@ void ui_Livedata_screen_init(void)
     lv_obj_set_align(ui_wifi, LV_ALIGN_CENTER);
     lv_obj_set_style_text_font(ui_wifi, &lv_font_montserrat_20, LV_PART_MAIN | LV_STATE_DEFAULT);
 
+    lv_obj_add_event_cb(ui_battw, ui_event_battw, LV_EVENT_ALL, NULL);
+    lv_obj_add_event_cb(ui_Livedata, ui_event_Livedata, LV_EVENT_ALL, NULL);
     uic_Livedata = ui_Livedata;
     uic_SOCbar = ui_SOCbar;
     uic_SOC = ui_SOC;
@@ -276,7 +281,6 @@ void ui_Livedata_screen_destroy(void)
     ui_Range = NULL;
     uic_battw = NULL;
     ui_battw = NULL;
-    ui_Arc2 = NULL;
     uic_battamps = NULL;
     ui_battamps = NULL;
     uic_celltemp = NULL;
