@@ -20,8 +20,8 @@
 
 #define PORT 4210
 // WiFi Configuration - Update these with your network credentials
-#define WIFI_SSID "HuNor"
-#define WIFI_PASSWORD "1234554321"
+#define WIFI_SSID "HunorCar"
+#define WIFI_PASSWORD "Jucymucy8581"
 
 // WiFi event bits
 #define WIFI_CONNECTED_BIT BIT0
@@ -32,7 +32,16 @@
 static float kw_data[CHART_DATA_POINTS];
 static float soc_data[CHART_DATA_POINTS];
 static int data_index = 0;
+static bool chart_initialized = false;
 static SemaphoreHandle_t chart_mutex = NULL;
+
+// Chart series references - store them once during initialization
+static lv_chart_series_t * kw_series = NULL;
+static lv_chart_series_t * soc_series = NULL;
+static bool first_data_received = false;
+static TickType_t last_chart_update = 0;
+static const TickType_t CHART_UPDATE_INTERVAL = pdMS_TO_TICKS(60000); // 60 seconds
+
 
 // Data queue for thread-safe communication
 typedef struct {
@@ -63,15 +72,167 @@ extern lv_obj_t * ui_labelbattamps;
 extern lv_obj_t * ui_labelcelltemp;
 extern lv_obj_t * ui_labelvolt;
 extern lv_obj_t * ui_wifi;
-
+extern lv_obj_t * uic_Label9;
+extern lv_obj_t * uic_Label8; 
 // Screen2 chart elements
 extern lv_obj_t * ui_Kwchart;
 extern lv_obj_t * uic_Kwchart;
 
-// Safe chart update function with proper error checking
+// Initialize chart series once - call this after ui_init()
+void initialize_chart_series(void) {
+    if (ui_Kwchart == NULL) {
+        ESP_LOGW("CHART", "Chart object not available for initialization");
+        return;
+    }
+    
+    if (lvgl_port_lock(pdMS_TO_TICKS(100))) {
+        ESP_LOGI("CHART", "Initializing chart series...");
+        
+        // First, set the chart configuration BEFORE adding series
+        lv_chart_set_type(ui_Kwchart, LV_CHART_TYPE_LINE);
+        lv_chart_set_point_count(ui_Kwchart, CHART_DATA_POINTS);
+        lv_chart_set_range(ui_Kwchart, LV_CHART_AXIS_PRIMARY_Y, -60, 100);
+        
+        // Create new series
+        kw_series = lv_chart_add_series(ui_Kwchart, lv_color_hex(0xFF0000), LV_CHART_AXIS_PRIMARY_Y);
+        soc_series = lv_chart_add_series(ui_Kwchart, lv_color_hex(0x00FF00), LV_CHART_AXIS_PRIMARY_Y);
+        
+        if (kw_series && soc_series) {
+            ESP_LOGI("CHART", "Series created successfully, clearing initial data...");
+            
+            // IMPORTANT: Clear all points immediately after series creation
+            // This removes the default/initialization data that LVGL adds
+            lv_chart_set_all_value(ui_Kwchart, kw_series, LV_CHART_POINT_NONE);
+            lv_chart_set_all_value(ui_Kwchart, soc_series, LV_CHART_POINT_NONE);
+            
+            // Initialize our data arrays to known values
+            for (int i = 0; i < CHART_DATA_POINTS; i++) {
+                kw_data[i] = 0.0f;
+                soc_data[i] = 0.0f;
+            }
+            data_index = 0;
+            
+            // Force a complete chart refresh to ensure clean state
+            lv_chart_refresh(ui_Kwchart);
+            lv_obj_invalidate(ui_Kwchart);
+            
+            chart_initialized = true;
+            ESP_LOGI("CHART", "Chart series initialized and cleared successfully");
+        } else {
+            ESP_LOGE("CHART", "Failed to create chart series");
+        }
+        
+        lvgl_port_unlock();
+    }
+}
+// Enhanced clear function that should be called when first real data arrives
+void clear_chart_artifacts(void) {
+    if (!chart_initialized || ui_Kwchart == NULL || kw_series == NULL || soc_series == NULL) {
+        return;
+    }
+    
+    ESP_LOGI("CHART", "Clearing chart artifacts...");
+    
+    if (lvgl_port_lock(pdMS_TO_TICKS(100))) {
+        // Method 1: Clear all points to "no data" state
+        lv_chart_set_all_value(ui_Kwchart, kw_series, LV_CHART_POINT_NONE);
+        lv_chart_set_all_value(ui_Kwchart, soc_series, LV_CHART_POINT_NONE);
+        
+        // Method 2: Alternative - remove and recreate series (more aggressive)
+        // Uncomment these lines if Method 1 doesn't work:
+        /*
+        lv_chart_remove_series(ui_Kwchart, kw_series);
+        lv_chart_remove_series(ui_Kwchart, soc_series);
+        
+        kw_series = lv_chart_add_series(ui_Kwchart, lv_color_hex(0xFF0000), LV_CHART_AXIS_PRIMARY_Y);
+        soc_series = lv_chart_add_series(ui_Kwchart, lv_color_hex(0x00FF00), LV_CHART_AXIS_PRIMARY_Y);
+        
+        if (kw_series && soc_series) {
+            lv_chart_set_all_value(ui_Kwchart, kw_series, LV_CHART_POINT_NONE);
+            lv_chart_set_all_value(ui_Kwchart, soc_series, LV_CHART_POINT_NONE);
+        }
+        */
+        
+        // Reset data arrays
+        for (int i = 0; i < CHART_DATA_POINTS; i++) {
+            kw_data[i] = 0.0f;
+            soc_data[i] = 0.0f;
+        }
+        data_index = 0;
+        
+        // Force complete refresh
+        lv_chart_refresh(ui_Kwchart);
+        lv_obj_invalidate(ui_Kwchart);
+        
+        lvgl_port_unlock();
+    }
+}
+void update_chart_display(void) {
+    if (!chart_initialized || ui_Kwchart == NULL || kw_series == NULL || soc_series == NULL) {
+        ESP_LOGW("CHART", "Chart not properly initialized");
+        return;
+    }
+    
+    if (lvgl_port_lock(pdMS_TO_TICKS(100))) {
+        // Take mutex to protect chart data
+        if (chart_mutex != NULL && xSemaphoreTake(chart_mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+            
+            // Get the most recent data point (the one we just added)
+            int current_idx = (data_index - 1 + CHART_DATA_POINTS) % CHART_DATA_POINTS;
+            
+            // Log the actual values we're about to display
+            ESP_LOGI("CHART", "Displaying chart data: kW=%.1f, SOC=%.1f (index=%d)", 
+                     kw_data[current_idx], soc_data[current_idx], current_idx);
+            
+            // Add only the latest point (recommended for real-time updates)
+            lv_chart_set_next_value(ui_Kwchart, kw_series, (lv_coord_t)kw_data[current_idx]);
+            lv_chart_set_next_value(ui_Kwchart, soc_series, (lv_coord_t)soc_data[current_idx]);
+            
+            // Force chart refresh
+            lv_obj_invalidate(ui_Kwchart);
+            
+            xSemaphoreGive(chart_mutex);
+            
+            ESP_LOGI("CHART", "Chart updated with kW=%.1f, SOC=%.1f", 
+                     kw_data[current_idx], soc_data[current_idx]);
+        }
+        
+        lvgl_port_unlock();
+    }
+}
 void update_chart_data_safe(float kw_value, float soc_value) {
+    if (!chart_initialized) {
+        ESP_LOGW("CHART", "Chart not initialized, skipping update");
+        return;
+    }
+    
+    ESP_LOGI("CHART", "update_chart_data_safe called with kW=%.1f, SOC=%.1f", kw_value, soc_value);
+    
+    // Clear artifacts on first real data
+    if (!first_data_received) {
+        clear_chart_artifacts();
+        first_data_received = true;
+        ESP_LOGI("CHART", "First data received, clearing artifacts");
+    }
+    
+    // Check if enough time has passed since last chart update
+    TickType_t current_time = xTaskGetTickCount();
+    if (current_time - last_chart_update < CHART_UPDATE_INTERVAL) {
+        ESP_LOGI("CHART", "Chart update skipped - waiting for interval (time since last: %lu ms)", 
+                 (unsigned long)((current_time - last_chart_update) * portTICK_PERIOD_MS));
+        return; // IMPORTANT: Return here, don't call update_chart_display()
+    }
+    
     // Take mutex to protect chart data
     if (chart_mutex != NULL && xSemaphoreTake(chart_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        // Validate input values
+        if (kw_value < -60.0f) kw_value = -60.0f;
+        if (kw_value > 42.0f) kw_value = 42.0f;
+        if (soc_value < 0.0f) soc_value = 0.0f;
+        if (soc_value > 100.0f) soc_value = 100.0f;
+        
+        ESP_LOGI("CHART", "Storing data at index %d: kW=%.1f, SOC=%.1f", data_index, kw_value, soc_value);
+        
         // Store data in circular buffer
         kw_data[data_index] = kw_value;
         soc_data[data_index] = soc_value;
@@ -79,64 +240,17 @@ void update_chart_data_safe(float kw_value, float soc_value) {
         // Move to next index (circular buffer)
         data_index = (data_index + 1) % CHART_DATA_POINTS;
         
-        xSemaphoreGive(chart_mutex);
-    }
-}
-
-// Separate function to update chart display - called from LVGL task only
-void update_chart_display(void) {
-    // Check if chart exists and is valid
-    if (ui_Kwchart == NULL) {
-        ESP_LOGW("CHART", "Chart object is NULL");
-        return;
-    }
-    
-    // Take mutex to protect chart data
-    if (chart_mutex != NULL && xSemaphoreTake(chart_mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-        // Get chart series with proper error checking
-        lv_chart_series_t * kw_series = lv_chart_get_series_next(ui_Kwchart, NULL);
-        if (kw_series == NULL) {
-            ESP_LOGW("CHART", "kW series is NULL");
-            xSemaphoreGive(chart_mutex);
-            return;
-        }
-        
-        lv_chart_series_t * soc_series = lv_chart_get_series_next(ui_Kwchart, kw_series);
-        if (soc_series == NULL) {
-            ESP_LOGW("CHART", "SOC series is NULL");
-            xSemaphoreGive(chart_mutex);
-            return;
-        }
-        
-        // Clear existing data
-        lv_chart_set_all_value(ui_Kwchart, kw_series, LV_CHART_POINT_NONE);
-        lv_chart_set_all_value(ui_Kwchart, soc_series, LV_CHART_POINT_NONE);
-        
-        // Add data points in order (oldest to newest)
-        for (int i = 0; i < CHART_DATA_POINTS; i++) {
-            int idx = (data_index + i) % CHART_DATA_POINTS;
-            
-            // Validate data before adding
-            float kw_val = kw_data[idx];
-            float soc_val = soc_data[idx];
-            
-            // Clamp values to reasonable ranges
-            if (kw_val < -60.0f) kw_val = -60.0f;
-            if (kw_val > 42.0f) kw_val = 42.0f;
-            if (soc_val < 0.0f) soc_val = 0.0f;
-            if (soc_val > 100.0f) soc_val = 100.0f;
-            
-            // Add kW data (series 1)
-            lv_chart_set_next_value(ui_Kwchart, kw_series, (lv_coord_t)kw_val);
-            
-            // Add SOC data (series 2)
-            lv_chart_set_next_value(ui_Kwchart, soc_series, (lv_coord_t)soc_val);
-        }
-        
-        // Refresh the chart
-        lv_chart_refresh(ui_Kwchart);
+        // Update the last update time
+        last_chart_update = current_time;
         
         xSemaphoreGive(chart_mutex);
+        
+        ESP_LOGI("CHART", "Chart data stored successfully: kW=%.1f, SOC=%.1f%%", kw_value, soc_value);
+        
+        // ONLY call update_chart_display() when we actually stored new data
+        update_chart_display();
+    } else {
+        ESP_LOGE("CHART", "Failed to acquire chart mutex");
     }
 }
 
@@ -153,37 +267,42 @@ void ui_update_task(void *pvParameters) {
             float watt_kw = data.watt / 1000.0f;
             
             // Update chart data (thread-safe)
-            //update_chart_data_safe(watt_kw, data.soc);
+            update_chart_data_safe(watt_kw, data.soc);
             
             // Update UI elements - must be done with LVGL lock
             if (lvgl_port_lock(pdMS_TO_TICKS(100))) {
                 // Validate UI objects before using them
-                if (ui_SOC != NULL) {
-                    char soc_text[16];
-                    snprintf(soc_text, sizeof(soc_text), "%.1f%%", data.soc);
-                    lv_label_set_text(ui_SOC, soc_text);
+                        if (ui_SOC != NULL) {
+                            char soc_text[16];
+                            snprintf(soc_text, sizeof(soc_text), "%.1f%%", data.soc);
+                            lv_label_set_text(ui_SOC, soc_text);
+                        }
+                        if (uic_Label9 != NULL) {
+                            char soc_text[16];
+                            snprintf(soc_text, sizeof(soc_text), "%.1f%%", data.soc);
+                            lv_label_set_text(uic_Label9, soc_text);
+                        }
+                        
+                        if (ui_SOCbar != NULL) {
+                        int soc_val = (int)data.soc;
+                        soc_val = (soc_val < 0) ? 0 : (soc_val > 100) ? 100 : soc_val;
+                        lv_bar_set_value(ui_SOCbar, soc_val, LV_ANIM_ON);
+
+                        // Set color based on SOC range
+                        lv_color_t bar_color;
+
+                    if (soc_val <= 10) {
+                        bar_color = lv_color_hex(0xFF0000); // Red
+                    } else if (soc_val <= 25) {
+                        bar_color = lv_color_hex(0xFFA500); // Orange
+                    } else if (soc_val > 90) {
+                        bar_color = lv_color_hex(0x00FF00); // Green
+                    } else {
+                        bar_color = lv_color_hex(0x3366CC); // Default/original color (adjust if needed)
+                    }
+
+                    lv_obj_set_style_bg_color(ui_SOCbar, bar_color, LV_PART_INDICATOR | LV_STATE_DEFAULT);
                 }
-                
-                if (ui_SOCbar != NULL) {
-    int soc_val = (int)data.soc;
-    soc_val = (soc_val < 0) ? 0 : (soc_val > 100) ? 100 : soc_val;
-    lv_bar_set_value(ui_SOCbar, soc_val, LV_ANIM_ON);
-
-    // Set color based on SOC range
-    lv_color_t bar_color;
-
-    if (soc_val <= 10) {
-        bar_color = lv_color_hex(0xFF0000); // Red
-    } else if (soc_val <= 25) {
-        bar_color = lv_color_hex(0xFFA500); // Orange
-    } else if (soc_val > 90) {
-        bar_color = lv_color_hex(0x00FF00); // Green
-    } else {
-        bar_color = lv_color_hex(0x3366CC); // Default/original color (adjust if needed)
-    }
-
-    lv_obj_set_style_bg_color(ui_SOCbar, bar_color, LV_PART_INDICATOR | LV_STATE_DEFAULT);
-}
                 
                 if (ui_Range != NULL) {
                     char range_text[16];
@@ -193,29 +312,34 @@ void ui_update_task(void *pvParameters) {
                 
                 if (ui_labelbattw != NULL) {
                     char watt_text[16];
-                    snprintf(watt_text, sizeof(watt_text), "%.1f", watt_kw);
+                    snprintf(watt_text, sizeof(watt_text), "%.1fkw", watt_kw);
                     lv_label_set_text(ui_labelbattw, watt_text);
+                }
+                if (uic_Label8 != NULL) {
+                    char watt_text[16];
+                    snprintf(watt_text, sizeof(watt_text), "%.1fkW", watt_kw);
+                    lv_label_set_text(uic_Label8, watt_text);
                 }
                 
                 if (ui_battw != NULL) {
-    // Clamp watt value between -60,000 and +42,000 W
-    float clamped_watt = (data.watt < -60000.0f) ? -60000.0f : (data.watt > 42000.0f) ? 42000.0f : data.watt;
+                    // Clamp watt value between -60,000 and +42,000 W
+                    float clamped_watt = (data.watt < -60000.0f) ? -60000.0f : (data.watt > 42000.0f) ? 42000.0f : data.watt;
 
-    // Update arc value directly using LVGL's arc value range (-60 to +42 kW)
-    int arc_value = (int)(clamped_watt / 1000.0f);  // From watts to kW
-    lv_arc_set_value(ui_battw, arc_value);
+                    // Update arc value directly using LVGL's arc value range (-60 to +42 kW)
+                    int arc_value = (int)(clamped_watt / 1000.0f);  // From watts to kW
+                    lv_arc_set_value(ui_battw, arc_value);
 
-    // Set color based on sign
-    if (arc_value >= 0) {
-        lv_obj_set_style_arc_color(ui_battw, lv_color_hex(0x00FF00), LV_PART_INDICATOR | LV_STATE_DEFAULT); // Green
-    } else {
-        lv_obj_set_style_arc_color(ui_battw, lv_color_hex(0xFF0000), LV_PART_INDICATOR | LV_STATE_DEFAULT); // Red
-    }
-}
+                    // Set color based on sign
+                    if (arc_value >= 0) {
+                        lv_obj_set_style_arc_color(ui_battw, lv_color_hex(0x00FF00), LV_PART_INDICATOR | LV_STATE_DEFAULT); // Green
+                    } else {
+                        lv_obj_set_style_arc_color(ui_battw, lv_color_hex(0xFF0000), LV_PART_INDICATOR | LV_STATE_DEFAULT); // Red
+                    }
+                }
                 
                 if (ui_labelbattamps != NULL) {
                     char amp_text[16];
-                    snprintf(amp_text, sizeof(amp_text), "%.1f", data.amp);
+                    snprintf(amp_text, sizeof(amp_text), "%.1fA", data.amp);
                     lv_label_set_text(ui_labelbattamps, amp_text);
                 }
                 
@@ -233,28 +357,28 @@ void ui_update_task(void *pvParameters) {
                 }
                 
                 if (ui_celltemp != NULL) {
-    // Clamp temperature to safe display range
-    int temp_arc_value = (int)data.temp;
-    temp_arc_value = (temp_arc_value < -10) ? -10 : (temp_arc_value > 100) ? 100 : temp_arc_value;
+                    // Clamp temperature to safe display range
+                    int temp_arc_value = (int)data.temp;
+                    temp_arc_value = (temp_arc_value < -10) ? -10 : (temp_arc_value > 100) ? 100 : temp_arc_value;
 
-    // Set arc value (e.g., shift -10 to 0 range into 0–100 for arc if needed)
-    lv_arc_set_value(ui_celltemp, temp_arc_value);  // Optional: map range depending on your arc min/max
+                    // Set arc value (e.g., shift -10 to 0 range into 0–100 for arc if needed)
+                    lv_arc_set_value(ui_celltemp, temp_arc_value);  // Optional: map range depending on your arc min/max
 
-    // Set arc color based on temperature range
-    lv_color_t arc_color;
-    if (temp_arc_value <= 10) {
-        arc_color = lv_color_hex(0x0000FF); // Blue
-    } else if (temp_arc_value <= 20) {
-        arc_color = lv_color_hex(0x90EE90); // Light Green
-    } else if (temp_arc_value <= 35) {
-        arc_color = lv_color_hex(0x00FF00); // Green
-    } else {
-        arc_color = lv_color_hex(0xFF0000); // Red
-    }
+                    // Set arc color based on temperature range
+                    lv_color_t arc_color;
+                    if (temp_arc_value <= 10) {
+                        arc_color = lv_color_hex(0x0000FF); // Blue
+                    } else if (temp_arc_value <= 20) {
+                        arc_color = lv_color_hex(0x90EE90); // Light Green
+                    } else if (temp_arc_value <= 35) {
+                        arc_color = lv_color_hex(0x00FF00); // Green
+                    } else {
+                        arc_color = lv_color_hex(0xFF0000); // Red
+                    }
 
-    lv_obj_set_style_arc_color(ui_celltemp, arc_color, LV_PART_INDICATOR | LV_STATE_DEFAULT);
-}
-                
+                    lv_obj_set_style_arc_color(ui_celltemp, arc_color, LV_PART_INDICATOR | LV_STATE_DEFAULT);
+                }
+                                
                 if (ui_labelvolt != NULL) {
                     char volt_text[16];
                     snprintf(volt_text, sizeof(volt_text), "%.1f", data.volt);
@@ -264,7 +388,7 @@ void ui_update_task(void *pvParameters) {
                 if (ui_volts != NULL) {
                     // Update arc value for voltage (0V to 370V range)
                     int volt_arc_value = (int)data.volt;
-                    volt_arc_value = (volt_arc_value < 0) ? 0 : (volt_arc_value > 100) ? 100 : volt_arc_value;
+                    volt_arc_value = (volt_arc_value < 0) ? 0 : (volt_arc_value > 370) ? 370 : volt_arc_value;
                     lv_arc_set_value(ui_volts, volt_arc_value);
                 }
                 
@@ -500,6 +624,7 @@ void app_main() {
     // Lock the mutex due to the LVGL APIs are not thread-safe
     if (lvgl_port_lock(-1)) {
         ui_init();
+        initialize_chart_series();
         
         // Initialize default values with null checks
         if (ui_SOC != NULL) lv_label_set_text(ui_SOC, "0.0%");
