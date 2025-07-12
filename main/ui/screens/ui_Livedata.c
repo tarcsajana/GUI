@@ -106,8 +106,8 @@ void ui_Livedata_screen_init(void)
     lv_obj_set_x(ui_battw, -349);
     lv_obj_set_y(ui_battw, -60);
     lv_obj_set_align(ui_battw, LV_ALIGN_CENTER);
-    lv_arc_set_range(ui_battw, 0, 42);
-    lv_arc_set_value(ui_battw, 15);
+    lv_arc_set_range(ui_battw, -60, 42);
+    lv_arc_set_value(ui_battw, 0);
     lv_arc_set_bg_angles(ui_battw, 180, 0);
     lv_obj_set_style_arc_width(ui_battw, 20, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_arc_rounded(ui_battw, false, LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -124,8 +124,8 @@ void ui_Livedata_screen_init(void)
     lv_obj_set_x(ui_battamps, -347);
     lv_obj_set_y(ui_battamps, 145);
     lv_obj_set_align(ui_battamps, LV_ALIGN_CENTER);
-    lv_arc_set_range(ui_battamps, 0, 42);
-    lv_arc_set_value(ui_battamps, 15);
+    lv_arc_set_range(ui_battamps, -200, 130);
+    lv_arc_set_value(ui_battamps, 0);
     lv_arc_set_bg_angles(ui_battamps, 180, 0);
     lv_obj_set_style_arc_width(ui_battamps, 20, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_arc_rounded(ui_battamps, false, LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -142,7 +142,7 @@ void ui_Livedata_screen_init(void)
     lv_obj_set_x(ui_celltemp, 346);
     lv_obj_set_y(ui_celltemp, 166);
     lv_obj_set_align(ui_celltemp, LV_ALIGN_CENTER);
-    lv_arc_set_range(ui_celltemp, 0, 42);
+    lv_arc_set_range(ui_celltemp, -10, 50);
     lv_arc_set_value(ui_celltemp, 15);
     lv_arc_set_bg_angles(ui_celltemp, 180, 0);
     lv_obj_set_style_arc_width(ui_celltemp, 20, LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -160,8 +160,8 @@ void ui_Livedata_screen_init(void)
     lv_obj_set_x(ui_volts, 341);
     lv_obj_set_y(ui_volts, -60);
     lv_obj_set_align(ui_volts, LV_ALIGN_CENTER);
-    lv_arc_set_range(ui_volts, 0, 42);
-    lv_arc_set_value(ui_volts, 15);
+    lv_arc_set_range(ui_volts, 300, 350);
+    lv_arc_set_value(ui_volts, 10);
     lv_arc_set_bg_angles(ui_volts, 180, 0);
     lv_obj_set_style_arc_width(ui_volts, 20, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_arc_rounded(ui_volts, false, LV_PART_MAIN | LV_STATE_DEFAULT);
