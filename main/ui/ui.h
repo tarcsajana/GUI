@@ -29,7 +29,7 @@ extern "C" {
 extern lv_obj_t * ui____initial_actions0;
 
 // IMAGES AND IMAGE SETS
-LV_IMG_DECLARE(ui_img_logomitsu2_png);    // assets/logomitsu2.png
+LV_IMG_DECLARE(ui_img_jo_png);    // assets/jo.png
 
 // UI INIT
 void ui_init(void);
