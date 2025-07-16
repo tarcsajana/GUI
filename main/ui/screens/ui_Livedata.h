@@ -13,7 +13,6 @@ extern "C" {
 // SCREEN: ui_Livedata
 extern void ui_Livedata_screen_init(void);
 extern void ui_Livedata_screen_destroy(void);
-extern void ui_event_Livedata(lv_event_t * e);
 extern lv_obj_t * ui_Livedata;
 extern lv_obj_t * ui_SOCbar;
 extern lv_obj_t * ui_SOC;

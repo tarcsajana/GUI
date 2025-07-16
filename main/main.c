@@ -17,12 +17,17 @@
 #include <freertos/event_groups.h>
 #include <freertos/queue.h>
 #include "cJSON.h"
+#include <time.h>
+#include <sys/time.h>
+#include "esp_sntp.h"
 
 #define PORT 4210
 // WiFi Configuration - Update these with your network credentials
 #define WIFI_SSID "HunorCar"
 #define WIFI_PASSWORD "Jucymucy8581"
 
+#define NTP_SERVER "pool.ntp.org"
+#define TIMEZONE_OFFSET 1 * 3600 
 // WiFi event bits
 #define WIFI_CONNECTED_BIT BIT0
 #define WIFI_FAIL_BIT BIT1
@@ -34,7 +39,9 @@ static float soc_data[CHART_DATA_POINTS];
 static int data_index = 0;
 static bool chart_initialized = false;
 static SemaphoreHandle_t chart_mutex = NULL;
-
+static bool time_synchronized = false;
+static char current_time_str[32] = "00:00:00";
+static char current_date_str[32] = "2024-01-01";
 // Chart series references - store them once during initialization
 static lv_chart_series_t * kw_series = NULL;
 static lv_chart_series_t * soc_series = NULL;
@@ -77,6 +84,78 @@ extern lv_obj_t * uic_Label8;
 // Screen2 chart elements
 extern lv_obj_t * ui_Kwchart;
 extern lv_obj_t * uic_Kwchart;
+extern lv_obj_t * uic_clock_time;   // Time display label
+extern lv_obj_t * uic_clock_date;   // Date display label
+
+void time_sync_notification_cb(struct timeval *tv)
+{
+    ESP_LOGI("TIME", "Time synchronization complete");
+    time_synchronized = true;
+}
+
+// Initialize NTP client
+void initialize_ntp(void)
+{
+    ESP_LOGI("TIME", "Initializing NTP client...");
+    
+    // Set timezone (Oslo is UTC+1)
+    setenv("TZ", "CET-1CEST,M3.5.0/2,M10.5.0/3", 1);  // Central European Time with DST
+    tzset();
+    
+    // Initialize SNTP
+    esp_sntp_setoperatingmode(SNTP_OPMODE_POLL);
+    esp_sntp_setservername(0, NTP_SERVER);
+    esp_sntp_set_time_sync_notification_cb(time_sync_notification_cb);
+    esp_sntp_init();
+    
+    ESP_LOGI("TIME", "NTP client initialized, waiting for time sync...");
+}
+
+// Update time strings
+void update_time_strings(void)
+{
+    time_t now;
+    struct tm timeinfo;
+    
+    time(&now);
+    localtime_r(&now, &timeinfo);
+    
+    // Format time (24-hour format)
+    strftime(current_time_str, sizeof(current_time_str), "%H:%M:%S", &timeinfo);
+    
+    // Format date
+    strftime(current_date_str, sizeof(current_date_str), "%Y-%m-%d", &timeinfo);
+}
+
+// Clock update task
+void clock_update_task(void *pvParameters)
+{
+    TickType_t xLastWakeTime = xTaskGetTickCount();
+    const TickType_t xFrequency = pdMS_TO_TICKS(1000); // Update every second
+    
+    while (1) {
+        if (time_synchronized) {
+            update_time_strings();
+            
+            // Update UI with LVGL lock
+            if (lvgl_port_lock(pdMS_TO_TICKS(100))) {
+                // Update time display
+                if (uic_clock_time != NULL) {
+                    lv_label_set_text(uic_clock_time, current_time_str);
+                }
+                
+                // Update date display
+                if (uic_clock_date != NULL) {
+                    lv_label_set_text(uic_clock_date, current_date_str);
+                }
+                
+                lvgl_port_unlock();
+            }
+        }
+        
+        vTaskDelayUntil(&xLastWakeTime, xFrequency);
+    }
+}
 
 // Initialize chart series once - call this after ui_init()
 void initialize_chart_series(void) {
@@ -452,7 +531,7 @@ static void event_handler(void* arg, esp_event_base_t event_base,
     }
 }
 
-void wifi_init_sta(void) {
+void wifi_init_sta_with_ntp(void) {
     s_wifi_event_group = xEventGroupCreate();
 
     ESP_ERROR_CHECK(esp_netif_init());
@@ -495,6 +574,10 @@ void wifi_init_sta(void) {
 
     if (bits & WIFI_CONNECTED_BIT) {
         ESP_LOGI("WIFI", "Connected to AP SSID:%s password:%s", WIFI_SSID, WIFI_PASSWORD);
+        
+        // Initialize NTP after WiFi connection
+        initialize_ntp();
+        
     } else if (bits & WIFI_FAIL_BIT) {
         ESP_LOGI("WIFI", "Failed to connect to SSID:%s, password:%s", WIFI_SSID, WIFI_PASSWORD);
     } else {
@@ -580,7 +663,7 @@ void udp_server_task(void *pvParameters) {
 }
 
 void app_main() {
-    // Initialize chart data arrays
+ // Initialize chart data arrays
     for (int i = 0; i < CHART_DATA_POINTS; i++) {
         kw_data[i] = 0.0f;
         soc_data[i] = 0.0f;
@@ -608,15 +691,18 @@ void app_main() {
     // Initialize event loop
     ESP_ERROR_CHECK(esp_event_loop_create_default());
 
-    // Initialize WiFi
+    // Initialize WiFi with NTP
     ESP_LOGI("MAIN", "Initializing WiFi...");
-    wifi_init_sta();
+    wifi_init_sta_with_ntp();  // Use the modified function
 
     // Start UDP server task
     xTaskCreate(udp_server_task, "udp_server", 4096, NULL, 5, NULL);
     
     // Start UI update task
     xTaskCreate(ui_update_task, "ui_update", 4096, NULL, 4, NULL);
+    
+    // Start clock update task
+    xTaskCreate(clock_update_task, "clock_update", 2048, NULL, 3, NULL);
     
     ESP_LOGI("MAIN", "Application started successfully");
 
@@ -634,6 +720,10 @@ void app_main() {
         if (ui_labelcelltemp != NULL) lv_label_set_text(ui_labelcelltemp, "0.0°C");
         if (ui_labelvolt != NULL) lv_label_set_text(ui_labelvolt, "0.0");
         if (ui_wifi != NULL) lv_label_set_text(ui_wifi, "Connecting...");
+        
+        // Initialize clock displays
+        if (uic_clock_time != NULL) lv_label_set_text(uic_clock_time, "--:--:--");
+        if (uic_clock_date != NULL) lv_label_set_text(uic_clock_date, "----/--/--");
         
         lvgl_port_unlock();
     }

@@ -36,16 +36,6 @@ lv_obj_t * ui_labelcelltemp = NULL;
 lv_obj_t * ui_labelvolt = NULL;
 lv_obj_t * ui_wifi = NULL;
 // event funtions
-void ui_event_Livedata(lv_event_t * e)
-{
-    lv_event_code_t event_code = lv_event_get_code(e);
-
-    if(event_code == LV_EVENT_GESTURE &&  lv_indev_get_gesture_dir(lv_indev_get_act()) == LV_DIR_LEFT) {
-        lv_indev_wait_release(lv_indev_get_act());
-        _ui_screen_change(&ui_Screen2, LV_SCR_LOAD_ANIM_FADE_ON, 100, 0, &ui_Screen2_screen_init);
-    }
-}
-
 void ui_event_battw(lv_event_t * e)
 {
     lv_event_code_t event_code = lv_event_get_code(e);
@@ -255,10 +245,10 @@ void ui_Livedata_screen_init(void)
     lv_obj_set_x(ui_wifi, -262);
     lv_obj_set_y(ui_wifi, 489);
     lv_obj_set_align(ui_wifi, LV_ALIGN_CENTER);
+    lv_obj_set_style_text_align(ui_wifi, LV_TEXT_ALIGN_LEFT, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_font(ui_wifi, &lv_font_montserrat_20, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     lv_obj_add_event_cb(ui_battw, ui_event_battw, LV_EVENT_ALL, NULL);
-    lv_obj_add_event_cb(ui_Livedata, ui_event_Livedata, LV_EVENT_ALL, NULL);
     uic_Livedata = ui_Livedata;
     uic_SOCbar = ui_SOCbar;
     uic_SOC = ui_SOC;
