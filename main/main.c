@@ -86,6 +86,56 @@ extern lv_obj_t * ui_Kwchart;
 extern lv_obj_t * uic_Kwchart;
 extern lv_obj_t * uic_clock_time;   // Time display label
 extern lv_obj_t * uic_clock_date;   // Date display label
+#define CONSUMPTION_SAMPLES 30  // Number of samples for rolling average
+static float consumption_history[CONSUMPTION_SAMPLES];
+static int consumption_index = 0;
+static float total_energy_consumed = 0.0f;  // kWh
+static float total_distance_traveled = 0.0f;  // km
+static float last_timestamp = 0.0f;
+static float current_consumption = 0.0f;  // kW/100km
+static bool consumption_initialized = false;
+
+// Add extern declaration for your consumption display UI element
+extern lv_obj_t * ui_consumption_label;  // You'll need to add this to your UI
+
+// Function to calculate consumption based on current power and speed
+float calculate_consumption(float power_kw, float speed_kmh) {
+    // Only calculate when vehicle is moving (speed > 1 km/h to avoid division by zero)
+    if (speed_kmh > 1.0f && power_kw > 0.0f) {  // Only count positive power (consumption)
+        return (power_kw * 100.0f) / speed_kmh;  // kW/100km
+    }
+    return 0.0f;  // Return 0 if not moving or regenerating
+}
+
+// Function to update consumption with rolling average
+void update_consumption_average(float instantaneous_consumption) {
+    if (!consumption_initialized) {
+        // Initialize array with first value
+        for (int i = 0; i < CONSUMPTION_SAMPLES; i++) {
+            consumption_history[i] = instantaneous_consumption;
+        }
+        consumption_initialized = true;
+    }
+    
+    // Add new value to rolling buffer
+    consumption_history[consumption_index] = instantaneous_consumption;
+    consumption_index = (consumption_index + 1) % CONSUMPTION_SAMPLES;
+    
+    // Calculate average
+    float sum = 0.0f;
+    int valid_samples = 0;
+    
+    for (int i = 0; i < CONSUMPTION_SAMPLES; i++) {
+        if (consumption_history[i] > 0.0f) {  // Only count valid consumption values
+            sum += consumption_history[i];
+            valid_samples++;
+        }
+    }
+    
+    if (valid_samples > 0) {
+        current_consumption = sum / valid_samples;
+    }
+}
 
 void time_sync_notification_cb(struct timeval *tv)
 {
