@@ -21,6 +21,13 @@ extern lv_obj_t * ui_Consumption;
 extern lv_obj_t * ui_totalenergyconsumed;
 extern lv_obj_t * ui_totaldistancetraveled;
 extern lv_obj_t * ui_avgconsumption;
+extern lv_obj_t * ui_Label10;
+extern lv_obj_t * ui_Label11;
+extern lv_obj_t * ui_Label12;
+extern lv_obj_t * ui_Label13;
+extern void ui_event_Button3(lv_event_t * e);
+extern lv_obj_t * ui_Button3;
+extern lv_obj_t * ui_Label15;
 // CUSTOM VARIABLES
 extern lv_obj_t * uic_clock_time;
 extern lv_obj_t * uic_clock_date;

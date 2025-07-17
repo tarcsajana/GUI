@@ -100,6 +100,9 @@ static bool consumption_initialized = false;
 
 // Add extern declaration for your consumption display UI element
 extern lv_obj_t * uic_consumption_label;  // You'll need to add this to your UI
+extern lv_obj_t * uic_avgconsumption;
+extern lv_obj_t * uic_totaldistancetraveled;
+extern lv_obj_t * uic_totalenergyconsumed;
 
 // Function to calculate consumption based on current power and speed
 float calculate_consumption(float power_kw, float speed_kmh) {
@@ -553,6 +556,24 @@ void ui_update_task_with_consumption(void *pvParameters) {
                         snprintf(consumption_text, sizeof(consumption_text), "-- kW/100km");
                     }
                     lv_label_set_text(uic_consumption_label, consumption_text);
+                }
+                // Update consumption label
+                if (uic_avgconsumption) {
+                    char buf[32];
+                    snprintf(buf, sizeof(buf), "Avg: %.2f kW/100km", current_consumption);
+                    lv_label_set_text(uic_avgconsumption, buf);
+                }
+                // Update total distance traveled label
+                if (uic_totaldistancetraveled) {
+                    char buf[32];
+                    snprintf(buf, sizeof(buf), "Dist: %.1f km", total_distance_traveled);
+                    lv_label_set_text(uic_totaldistancetraveled, buf);
+                }
+                // Update total energy consumed label
+                if (uic_totalenergyconsumed) {
+                    char buf[32];
+                    snprintf(buf, sizeof(buf), "Energy: %.2f kWh", total_energy_consumed);
+                    lv_label_set_text(uic_totalenergyconsumed, buf);
                 }
                 // Update chart display
                 //update_chart_display();

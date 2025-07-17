@@ -18,6 +18,12 @@ lv_obj_t * ui_Consumption = NULL;
 lv_obj_t * ui_totalenergyconsumed = NULL;
 lv_obj_t * ui_totaldistancetraveled = NULL;
 lv_obj_t * ui_avgconsumption = NULL;
+lv_obj_t * ui_Label10 = NULL;
+lv_obj_t * ui_Label11 = NULL;
+lv_obj_t * ui_Label12 = NULL;
+lv_obj_t * ui_Label13 = NULL;
+lv_obj_t * ui_Button3 = NULL;
+lv_obj_t * ui_Label15 = NULL;
 // event funtions
 void ui_event_Screen1(lv_event_t * e)
 {
@@ -25,6 +31,15 @@ void ui_event_Screen1(lv_event_t * e)
 
     if(event_code == LV_EVENT_GESTURE &&  lv_indev_get_gesture_dir(lv_indev_get_act()) == LV_DIR_LEFT) {
         lv_indev_wait_release(lv_indev_get_act());
+        _ui_screen_change(&ui_Livedata, LV_SCR_LOAD_ANIM_FADE_ON, 500, 0, &ui_Livedata_screen_init);
+    }
+}
+
+void ui_event_Button3(lv_event_t * e)
+{
+    lv_event_code_t event_code = lv_event_get_code(e);
+
+    if(event_code == LV_EVENT_CLICKED) {
         _ui_screen_change(&ui_Livedata, LV_SCR_LOAD_ANIM_FADE_ON, 500, 0, &ui_Livedata_screen_init);
     }
 }
@@ -61,31 +76,96 @@ void ui_Screen1_screen_init(void)
     ui_Consumption = lv_label_create(ui_Screen1);
     lv_obj_set_width(ui_Consumption, LV_SIZE_CONTENT);   /// 1
     lv_obj_set_height(ui_Consumption, LV_SIZE_CONTENT);    /// 1
-    lv_obj_set_x(ui_Consumption, -234);
-    lv_obj_set_y(ui_Consumption, -268);
+    lv_obj_set_x(ui_Consumption, 245);
+    lv_obj_set_y(ui_Consumption, -269);
     lv_obj_set_align(ui_Consumption, LV_ALIGN_CENTER);
+    lv_obj_set_style_text_align(ui_Consumption, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(ui_Consumption, &lv_font_montserrat_40, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     ui_totalenergyconsumed = lv_label_create(ui_Screen1);
     lv_obj_set_width(ui_totalenergyconsumed, LV_SIZE_CONTENT);   /// 1
     lv_obj_set_height(ui_totalenergyconsumed, LV_SIZE_CONTENT);    /// 1
-    lv_obj_set_x(ui_totalenergyconsumed, -233);
-    lv_obj_set_y(ui_totalenergyconsumed, -234);
+    lv_obj_set_x(ui_totalenergyconsumed, 245);
+    lv_obj_set_y(ui_totalenergyconsumed, -218);
     lv_obj_set_align(ui_totalenergyconsumed, LV_ALIGN_CENTER);
+    lv_obj_set_style_text_align(ui_totalenergyconsumed, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(ui_totalenergyconsumed, &lv_font_montserrat_40, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     ui_totaldistancetraveled = lv_label_create(ui_Screen1);
     lv_obj_set_width(ui_totaldistancetraveled, LV_SIZE_CONTENT);   /// 1
     lv_obj_set_height(ui_totaldistancetraveled, LV_SIZE_CONTENT);    /// 1
-    lv_obj_set_x(ui_totaldistancetraveled, -240);
-    lv_obj_set_y(ui_totaldistancetraveled, -191);
+    lv_obj_set_x(ui_totaldistancetraveled, 245);
+    lv_obj_set_y(ui_totaldistancetraveled, -168);
     lv_obj_set_align(ui_totaldistancetraveled, LV_ALIGN_CENTER);
+    lv_obj_set_style_text_align(ui_totaldistancetraveled, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(ui_totaldistancetraveled, &lv_font_montserrat_40, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     ui_avgconsumption = lv_label_create(ui_Screen1);
     lv_obj_set_width(ui_avgconsumption, LV_SIZE_CONTENT);   /// 1
     lv_obj_set_height(ui_avgconsumption, LV_SIZE_CONTENT);    /// 1
-    lv_obj_set_x(ui_avgconsumption, -240);
-    lv_obj_set_y(ui_avgconsumption, -151);
+    lv_obj_set_x(ui_avgconsumption, 245);
+    lv_obj_set_y(ui_avgconsumption, -122);
     lv_obj_set_align(ui_avgconsumption, LV_ALIGN_CENTER);
+    lv_obj_set_style_text_align(ui_avgconsumption, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(ui_avgconsumption, &lv_font_montserrat_40, LV_PART_MAIN | LV_STATE_DEFAULT);
 
+    ui_Label10 = lv_label_create(ui_Screen1);
+    lv_obj_set_width(ui_Label10, LV_SIZE_CONTENT);   /// 1
+    lv_obj_set_height(ui_Label10, LV_SIZE_CONTENT);    /// 1
+    lv_obj_set_x(ui_Label10, -146);
+    lv_obj_set_y(ui_Label10, -269);
+    lv_obj_set_align(ui_Label10, LV_ALIGN_CENTER);
+    lv_label_set_text(ui_Label10, "Consumption:");
+    lv_obj_set_style_text_font(ui_Label10, &lv_font_montserrat_40, LV_PART_MAIN | LV_STATE_DEFAULT);
+
+    ui_Label11 = lv_label_create(ui_Screen1);
+    lv_obj_set_width(ui_Label11, LV_SIZE_CONTENT);   /// 1
+    lv_obj_set_height(ui_Label11, LV_SIZE_CONTENT);    /// 1
+    lv_obj_set_x(ui_Label11, -103);
+    lv_obj_set_y(ui_Label11, -218);
+    lv_obj_set_align(ui_Label11, LV_ALIGN_CENTER);
+    lv_label_set_text(ui_Label11, "Total Energy used:");
+    lv_obj_set_style_text_font(ui_Label11, &lv_font_montserrat_40, LV_PART_MAIN | LV_STATE_DEFAULT);
+
+    ui_Label12 = lv_label_create(ui_Screen1);
+    lv_obj_set_width(ui_Label12, LV_SIZE_CONTENT);   /// 1
+    lv_obj_set_height(ui_Label12, LV_SIZE_CONTENT);    /// 1
+    lv_obj_set_x(ui_Label12, -142);
+    lv_obj_set_y(ui_Label12, -168);
+    lv_obj_set_align(ui_Label12, LV_ALIGN_CENTER);
+    lv_label_set_text(ui_Label12, "Total distance:");
+    lv_obj_set_style_text_font(ui_Label12, &lv_font_montserrat_40, LV_PART_MAIN | LV_STATE_DEFAULT);
+
+    ui_Label13 = lv_label_create(ui_Screen1);
+    lv_obj_set_width(ui_Label13, LV_SIZE_CONTENT);   /// 1
+    lv_obj_set_height(ui_Label13, LV_SIZE_CONTENT);    /// 1
+    lv_obj_set_x(ui_Label13, -83);
+    lv_obj_set_y(ui_Label13, -122);
+    lv_obj_set_align(ui_Label13, LV_ALIGN_CENTER);
+    lv_label_set_text(ui_Label13, "Average consuption:");
+    lv_obj_set_style_text_font(ui_Label13, &lv_font_montserrat_40, LV_PART_MAIN | LV_STATE_DEFAULT);
+
+    ui_Button3 = lv_btn_create(ui_Screen1);
+    lv_obj_set_width(ui_Button3, 159);
+    lv_obj_set_height(ui_Button3, 61);
+    lv_obj_set_x(ui_Button3, -214);
+    lv_obj_set_y(ui_Button3, 436);
+    lv_obj_set_align(ui_Button3, LV_ALIGN_CENTER);
+    lv_obj_add_flag(ui_Button3, LV_OBJ_FLAG_SCROLL_ON_FOCUS);     /// Flags
+    lv_obj_clear_flag(ui_Button3, LV_OBJ_FLAG_SCROLLABLE);      /// Flags
+    lv_obj_set_style_bg_color(ui_Button3, lv_color_hex(0x878686), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_opa(ui_Button3, 100, LV_PART_MAIN | LV_STATE_DEFAULT);
+
+    ui_Label15 = lv_label_create(ui_Screen1);
+    lv_obj_set_width(ui_Label15, LV_SIZE_CONTENT);   /// 1
+    lv_obj_set_height(ui_Label15, LV_SIZE_CONTENT);    /// 1
+    lv_obj_set_x(ui_Label15, -214);
+    lv_obj_set_y(ui_Label15, 434);
+    lv_obj_set_align(ui_Label15, LV_ALIGN_CENTER);
+    lv_label_set_text(ui_Label15, "Back");
+    lv_obj_set_style_text_font(ui_Label15, &lv_font_montserrat_26, LV_PART_MAIN | LV_STATE_DEFAULT);
+
+    lv_obj_add_event_cb(ui_Button3, ui_event_Button3, LV_EVENT_ALL, NULL);
     lv_obj_add_event_cb(ui_Screen1, ui_event_Screen1, LV_EVENT_ALL, NULL);
     uic_clock_time = ui_uiclocktime;
     uic_clock_date = ui_clockdate;
@@ -114,5 +194,11 @@ void ui_Screen1_screen_destroy(void)
     ui_totaldistancetraveled = NULL;
     uic_avgconsumption = NULL;
     ui_avgconsumption = NULL;
+    ui_Label10 = NULL;
+    ui_Label11 = NULL;
+    ui_Label12 = NULL;
+    ui_Label13 = NULL;
+    ui_Button3 = NULL;
+    ui_Label15 = NULL;
 
 }

@@ -32,6 +32,13 @@ extern lv_obj_t * ui_labelbattamps;
 extern lv_obj_t * ui_labelcelltemp;
 extern lv_obj_t * ui_labelvolt;
 extern lv_obj_t * ui_wifi;
+extern lv_obj_t * ui_Button5;
+extern void ui_event_Button4(lv_event_t * e);
+extern lv_obj_t * ui_Button4;
+extern void ui_event_Button1(lv_event_t * e);
+extern lv_obj_t * ui_Button1;
+extern lv_obj_t * ui_Label16;
+extern lv_obj_t * ui_Label14;
 // CUSTOM VARIABLES
 extern lv_obj_t * uic_Livedata;
 extern lv_obj_t * uic_SOCbar;
