@@ -20,6 +20,7 @@
 #include <time.h>
 #include <sys/time.h>
 #include "esp_sntp.h"
+#include "esp_timer.h"
 
 #define PORT 4210
 // WiFi Configuration - Update these with your network credentials
@@ -58,6 +59,8 @@ typedef struct {
     float amp;
     float volt;
     float watt;
+    float consumption;  // Add this field
+    float speed;        // Add this field
 } sensor_data_t;
 
 static QueueHandle_t sensor_data_queue = NULL;
@@ -96,7 +99,7 @@ static float current_consumption = 0.0f;  // kW/100km
 static bool consumption_initialized = false;
 
 // Add extern declaration for your consumption display UI element
-extern lv_obj_t * ui_consumption_label;  // You'll need to add this to your UI
+extern lv_obj_t * uic_consumption_label;  // You'll need to add this to your UI
 
 // Function to calculate consumption based on current power and speed
 float calculate_consumption(float power_kw, float speed_kmh) {
@@ -107,6 +110,24 @@ float calculate_consumption(float power_kw, float speed_kmh) {
     return 0.0f;  // Return 0 if not moving or regenerating
 }
 
+// Enhanced consumption tracking with trip statistics
+void update_trip_statistics(float power_kw, float speed_kmh, float current_time) {
+    if (last_timestamp > 0.0f && current_time > last_timestamp) {
+        float time_delta = current_time - last_timestamp; // in seconds
+        float distance_delta = (speed_kmh * time_delta) / 3600.0f; // km
+        
+        // Update total distance
+        total_distance_traveled += distance_delta;
+        
+        // Update total energy consumed (only positive power)
+        if (power_kw > 0.0f) {
+            float energy_delta = (power_kw * time_delta) / 3600.0f; // kWh
+            total_energy_consumed += energy_delta;
+        }
+    }
+    
+    last_timestamp = current_time;
+}
 // Function to update consumption with rolling average
 void update_consumption_average(float instantaneous_consumption) {
     if (!consumption_initialized) {
@@ -383,10 +404,9 @@ void update_chart_data_safe(float kw_value, float soc_value) {
     }
 }
 
-// UI update task - runs in LVGL context
-void ui_update_task(void *pvParameters) {
+void ui_update_task_with_consumption(void *pvParameters) {
     sensor_data_t data;
-    
+
     while (1) {
         // Wait for data from queue
         if (xQueueReceive(sensor_data_queue, &data, portMAX_DELAY) == pdTRUE) {
@@ -524,7 +544,16 @@ void ui_update_task(void *pvParameters) {
                 if (ui_wifi != NULL) {
                     lv_label_set_text(ui_wifi, "Connected");
                 }
-                
+
+                if (uic_consumption_label != NULL) {
+                    char consumption_text[32];
+                    if (current_consumption > 0.0f) {
+                        snprintf(consumption_text, sizeof(consumption_text), "%.1f kW/100km", current_consumption);
+                    } else {
+                        snprintf(consumption_text, sizeof(consumption_text), "-- kW/100km");
+                    }
+                    lv_label_set_text(uic_consumption_label, consumption_text);
+                }
                 // Update chart display
                 //update_chart_display();
                 
@@ -536,10 +565,27 @@ void ui_update_task(void *pvParameters) {
     }
 }
 
-// Simplified data processing function - now just queues data
-void process_received_data(float soc, float range, float temp, float amp, float volt, float watt) {
-    ESP_LOGI("DATA", "Received data - SOC: %.1f%%, Range: %.1f km, Temp: %.1f°C, Amp: %.1f A, Volt: %.1f V, Watt: %.1f W", 
-             soc, range, temp, amp, volt, watt);
+// Enhanced process_received_data function with trip statistics
+void process_received_data_with_consumption(float soc, float range, float temp, float amp, float volt, float watt, float speed_kmh) {
+    ESP_LOGI("DATA", "Received data - SOC: %.1f%%, Range: %.1f km, Temp: %.1f°C, Amp: %.1f A, Volt: %.1f V, Watt: %.1f W, Speed: %.1f km/h", 
+             soc, range, temp, amp, volt, watt, speed_kmh);
+    
+    // Convert watts to kW
+    float power_kw = watt / 1000.0f;
+    
+    // Get current time for trip statistics
+    float current_time = (float)esp_timer_get_time() / 1000000.0f; // Convert to seconds
+    
+    // Update trip statistics
+    update_trip_statistics(power_kw, speed_kmh, current_time);
+    
+    // Calculate instantaneous consumption
+    float instantaneous_consumption = calculate_consumption(power_kw, speed_kmh);
+    
+    // Update rolling average
+    if (instantaneous_consumption > 0.0f) {
+        update_consumption_average(instantaneous_consumption);
+    }
     
     // Create data structure
     sensor_data_t data = {
@@ -548,7 +594,9 @@ void process_received_data(float soc, float range, float temp, float amp, float 
         .temp = temp,
         .amp = amp,
         .volt = volt,
-        .watt = watt
+        .watt = watt,
+        .consumption = current_consumption,
+        .speed = speed_kmh
     };
     
     // Send to queue (non-blocking)
@@ -557,6 +605,27 @@ void process_received_data(float soc, float range, float temp, float amp, float 
             ESP_LOGW("DATA", "Failed to queue sensor data");
         }
     }
+}
+
+// Function to get trip statistics (call this from UI or logging)
+void get_trip_statistics(float *total_energy, float *total_distance, float *avg_consumption) {
+    *total_energy = total_energy_consumed;
+    *total_distance = total_distance_traveled;
+    
+    // Calculate average consumption for the entire trip
+    if (total_distance_traveled > 0.0f) {
+        *avg_consumption = (total_energy_consumed * 100.0f) / total_distance_traveled;
+    } else {
+        *avg_consumption = 0.0f;
+    }
+}
+
+// Function to reset trip statistics
+void reset_trip_statistics(void) {
+    total_energy_consumed = 0.0f;
+    total_distance_traveled = 0.0f;
+    last_timestamp = 0.0f;
+    ESP_LOGI("TRIP", "Trip statistics reset");
 }
 
 static void event_handler(void* arg, esp_event_base_t event_base,
@@ -682,7 +751,8 @@ void udp_server_task(void *pvParameters) {
                 cJSON *battA_item = cJSON_GetObjectItem(json, "battA");
                 cJSON *battV_item = cJSON_GetObjectItem(json, "battV");
                 cJSON *battW_item = cJSON_GetObjectItem(json, "battW");
-                
+                cJSON *speed_item = cJSON_GetObjectItem(json, "speed");  // Add this if available
+
                 // Check if all required fields exist and are numbers
                 if (cJSON_IsNumber(soc_item) && cJSON_IsNumber(range_item) && 
                     cJSON_IsNumber(temp_item) && cJSON_IsNumber(battA_item) && 
@@ -694,8 +764,13 @@ void udp_server_task(void *pvParameters) {
                     float battA = (float)battA_item->valuedouble;
                     float battV = (float)battV_item->valuedouble;
                     float battW = (float)battW_item->valuedouble;
-                    
-                    process_received_data(soc, range, temp, battA, battV, battW);
+                    float speed = 0.0f;
+
+                    // Use speed if available, otherwise calculate from range changes
+                    if (cJSON_IsNumber(speed_item)) {
+                        speed = (float)speed_item->valuedouble;
+                    }
+                     process_received_data_with_consumption(soc, range, temp, battA, battV, battW, speed);
                 } else {
                     ESP_LOGW("UDP", "JSON missing required fields or invalid types");
                 }
@@ -749,7 +824,7 @@ void app_main() {
     xTaskCreate(udp_server_task, "udp_server", 4096, NULL, 5, NULL);
     
     // Start UI update task
-    xTaskCreate(ui_update_task, "ui_update", 4096, NULL, 4, NULL);
+    xTaskCreate(ui_update_task_with_consumption, "ui_update", 4096, NULL, 4, NULL);
     
     // Start clock update task
     xTaskCreate(clock_update_task, "clock_update", 2048, NULL, 3, NULL);

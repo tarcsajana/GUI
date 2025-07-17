@@ -5,17 +5,26 @@
 
 #include "../ui.h"
 
+lv_obj_t * uic_avgconsumption;
+lv_obj_t * uic_totaldistancetraveled;
+lv_obj_t * uic_totalenergyconsumed;
+lv_obj_t * uic_consumption_label;
 lv_obj_t * uic_clock_date;
 lv_obj_t * uic_clock_time;
 lv_obj_t * ui_Screen1 = NULL;
 lv_obj_t * ui_uiclocktime = NULL;
 lv_obj_t * ui_clockdate = NULL;
+lv_obj_t * ui_Consumption = NULL;
+lv_obj_t * ui_totalenergyconsumed = NULL;
+lv_obj_t * ui_totaldistancetraveled = NULL;
+lv_obj_t * ui_avgconsumption = NULL;
 // event funtions
 void ui_event_Screen1(lv_event_t * e)
 {
     lv_event_code_t event_code = lv_event_get_code(e);
 
-    if(event_code == LV_EVENT_CLICKED) {
+    if(event_code == LV_EVENT_GESTURE &&  lv_indev_get_gesture_dir(lv_indev_get_act()) == LV_DIR_LEFT) {
+        lv_indev_wait_release(lv_indev_get_act());
         _ui_screen_change(&ui_Livedata, LV_SCR_LOAD_ANIM_FADE_ON, 500, 0, &ui_Livedata_screen_init);
     }
 }
@@ -49,9 +58,41 @@ void ui_Screen1_screen_init(void)
     lv_obj_set_style_text_align(ui_clockdate, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_font(ui_clockdate, &lv_font_montserrat_38, LV_PART_MAIN | LV_STATE_DEFAULT);
 
+    ui_Consumption = lv_label_create(ui_Screen1);
+    lv_obj_set_width(ui_Consumption, LV_SIZE_CONTENT);   /// 1
+    lv_obj_set_height(ui_Consumption, LV_SIZE_CONTENT);    /// 1
+    lv_obj_set_x(ui_Consumption, -234);
+    lv_obj_set_y(ui_Consumption, -268);
+    lv_obj_set_align(ui_Consumption, LV_ALIGN_CENTER);
+
+    ui_totalenergyconsumed = lv_label_create(ui_Screen1);
+    lv_obj_set_width(ui_totalenergyconsumed, LV_SIZE_CONTENT);   /// 1
+    lv_obj_set_height(ui_totalenergyconsumed, LV_SIZE_CONTENT);    /// 1
+    lv_obj_set_x(ui_totalenergyconsumed, -233);
+    lv_obj_set_y(ui_totalenergyconsumed, -234);
+    lv_obj_set_align(ui_totalenergyconsumed, LV_ALIGN_CENTER);
+
+    ui_totaldistancetraveled = lv_label_create(ui_Screen1);
+    lv_obj_set_width(ui_totaldistancetraveled, LV_SIZE_CONTENT);   /// 1
+    lv_obj_set_height(ui_totaldistancetraveled, LV_SIZE_CONTENT);    /// 1
+    lv_obj_set_x(ui_totaldistancetraveled, -240);
+    lv_obj_set_y(ui_totaldistancetraveled, -191);
+    lv_obj_set_align(ui_totaldistancetraveled, LV_ALIGN_CENTER);
+
+    ui_avgconsumption = lv_label_create(ui_Screen1);
+    lv_obj_set_width(ui_avgconsumption, LV_SIZE_CONTENT);   /// 1
+    lv_obj_set_height(ui_avgconsumption, LV_SIZE_CONTENT);    /// 1
+    lv_obj_set_x(ui_avgconsumption, -240);
+    lv_obj_set_y(ui_avgconsumption, -151);
+    lv_obj_set_align(ui_avgconsumption, LV_ALIGN_CENTER);
+
     lv_obj_add_event_cb(ui_Screen1, ui_event_Screen1, LV_EVENT_ALL, NULL);
     uic_clock_time = ui_uiclocktime;
     uic_clock_date = ui_clockdate;
+    uic_consumption_label = ui_Consumption;
+    uic_totalenergyconsumed = ui_totalenergyconsumed;
+    uic_totaldistancetraveled = ui_totaldistancetraveled;
+    uic_avgconsumption = ui_avgconsumption;
 
 }
 
@@ -65,5 +106,13 @@ void ui_Screen1_screen_destroy(void)
     ui_uiclocktime = NULL;
     uic_clock_date = NULL;
     ui_clockdate = NULL;
+    uic_consumption_label = NULL;
+    ui_Consumption = NULL;
+    uic_totalenergyconsumed = NULL;
+    ui_totalenergyconsumed = NULL;
+    uic_totaldistancetraveled = NULL;
+    ui_totaldistancetraveled = NULL;
+    uic_avgconsumption = NULL;
+    ui_avgconsumption = NULL;
 
 }

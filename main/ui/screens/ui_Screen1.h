@@ -17,9 +17,17 @@ extern void ui_event_Screen1(lv_event_t * e);
 extern lv_obj_t * ui_Screen1;
 extern lv_obj_t * ui_uiclocktime;
 extern lv_obj_t * ui_clockdate;
+extern lv_obj_t * ui_Consumption;
+extern lv_obj_t * ui_totalenergyconsumed;
+extern lv_obj_t * ui_totaldistancetraveled;
+extern lv_obj_t * ui_avgconsumption;
 // CUSTOM VARIABLES
 extern lv_obj_t * uic_clock_time;
 extern lv_obj_t * uic_clock_date;
+extern lv_obj_t * uic_consumption_label;
+extern lv_obj_t * uic_totalenergyconsumed;
+extern lv_obj_t * uic_totaldistancetraveled;
+extern lv_obj_t * uic_avgconsumption;
 
 #ifdef __cplusplus
 } /*extern "C"*/
