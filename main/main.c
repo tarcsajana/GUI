@@ -772,7 +772,7 @@ void udp_server_task(void *pvParameters) {
                 cJSON *battA_item = cJSON_GetObjectItem(json, "battA");
                 cJSON *battV_item = cJSON_GetObjectItem(json, "battV");
                 cJSON *battW_item = cJSON_GetObjectItem(json, "battW");
-                cJSON *speed_item = cJSON_GetObjectItem(json, "speed");  // Add this if available
+                cJSON *speed_item = cJSON_GetObjectItem(json, "speed_kmh");  // Changed from "speed" to "speed_kmh"
 
                 // Check if all required fields exist and are numbers
                 if (cJSON_IsNumber(soc_item) && cJSON_IsNumber(range_item) && 
