@@ -4,6 +4,7 @@ SET(SOURCES screens/ui_Livedata.c
     ui.c
     components/ui_comp_hook.c
     ui_helpers.c
+    ui_events.c
     images/ui_img_jo_png.c)
 
 add_library(ui ${SOURCES})

@@ -21,6 +21,7 @@
 #include <sys/time.h>
 #include "esp_sntp.h"
 #include "esp_timer.h"
+#include "esp_system.h" // For esp_restart
 
 #define PORT 4210
 // WiFi Configuration - Update these with your network credentials
@@ -195,7 +196,7 @@ void update_time_strings(void)
     localtime_r(&now, &timeinfo);
     
     // Format time (24-hour format)
-    strftime(current_time_str, sizeof(current_time_str), "%H:%M:%S", &timeinfo);
+    strftime(current_time_str, sizeof(current_time_str), "%H:%M", &timeinfo);
     
     // Format date
     strftime(current_date_str, sizeof(current_date_str), "%Y-%m-%d", &timeinfo);

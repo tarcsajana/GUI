@@ -28,6 +28,9 @@ extern lv_obj_t * ui_Label13;
 extern void ui_event_Button3(lv_event_t * e);
 extern lv_obj_t * ui_Button3;
 extern lv_obj_t * ui_Label15;
+extern void ui_event_Button6(lv_event_t * e);
+extern lv_obj_t * ui_Button6;
+extern lv_obj_t * ui_Label17;
 // CUSTOM VARIABLES
 extern lv_obj_t * uic_clock_time;
 extern lv_obj_t * uic_clock_date;
