@@ -560,19 +560,19 @@ void ui_update_task_with_consumption(void *pvParameters) {
                 // Update consumption label
                 if (uic_avgconsumption) {
                     char buf[32];
-                    snprintf(buf, sizeof(buf), "Avg: %.2f kW/100km", current_consumption);
+                    snprintf(buf, sizeof(buf), "%.2f kW/100km", current_consumption);
                     lv_label_set_text(uic_avgconsumption, buf);
                 }
                 // Update total distance traveled label
                 if (uic_totaldistancetraveled) {
                     char buf[32];
-                    snprintf(buf, sizeof(buf), "Dist: %.1f km", total_distance_traveled);
+                    snprintf(buf, sizeof(buf), "%.1f km", total_distance_traveled);
                     lv_label_set_text(uic_totaldistancetraveled, buf);
                 }
                 // Update total energy consumed label
                 if (uic_totalenergyconsumed) {
                     char buf[32];
-                    snprintf(buf, sizeof(buf), "Energy: %.2f kWh", total_energy_consumed);
+                    snprintf(buf, sizeof(buf), "%.2f kWh", total_energy_consumed);
                     lv_label_set_text(uic_totalenergyconsumed, buf);
                 }
                 // Update chart display
