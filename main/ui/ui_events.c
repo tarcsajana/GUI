@@ -4,8 +4,11 @@
 // Project name: SquareLine_Project
 
 #include "ui.h"
+#include "esp_system.h" // <-- Add this at the top
 
-void test(lv_event_t * e)
-{
-	esp_restart();
+
+void test(lv_event_t * e) {
+    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+        esp_restart();
+    }
 }
