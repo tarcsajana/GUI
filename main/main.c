@@ -108,10 +108,10 @@ extern lv_obj_t * uic_totalenergyconsumed;
 // Function to calculate consumption based on current power and speed
 float calculate_consumption(float power_kw, float speed_kmh) {
     // Only calculate when vehicle is moving (speed > 1 km/h to avoid division by zero)
-    if (speed_kmh > 1.0f && power_kw > 0.0f) {  // Only count positive power (consumption)
-        return (power_kw * 100.0f) / speed_kmh;  // kW/100km
+    if (speed_kmh > 1.0f && power_kw < 0.0f) {  // Only count negative power (usage)
+        return (-power_kw * 100.0f) / speed_kmh;  // kW/100km, make positive
     }
-    return 0.0f;  // Return 0 if not moving or regenerating
+    return 0.0f;  // Return 0 if not moving or not using power
 }
 
 // Enhanced consumption tracking with trip statistics
@@ -123,11 +123,16 @@ void update_trip_statistics(float power_kw, float speed_kmh, float current_time)
         // Update total distance
         total_distance_traveled += distance_delta;
         
-        // Update total energy consumed (only positive power)
-        if (power_kw > 0.0f) {
-            float energy_delta = (power_kw * time_delta) / 3600.0f; // kWh
+        // Update total energy consumed (only negative power, i.e., usage)
+        if (power_kw < 0.0f) { // Only count energy used (driving)
+            float energy_delta = (-power_kw * time_delta) / 3600.0f; // kWh, make positive
             total_energy_consumed += energy_delta;
         }
+        // Optionally, track regen/charging energy separately:
+        // else if (power_kw > 0.0f) {
+        //     float regen_delta = (power_kw * time_delta) / 3600.0f;
+        //     total_energy_regenerated += regen_delta;
+        // }
     }
     
     last_timestamp = current_time;
