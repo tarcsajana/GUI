@@ -23,6 +23,12 @@
 #include "esp_timer.h"
 #include "esp_system.h" // For esp_restart
 
+// Function prototype for get_trip_statistics
+void get_trip_statistics(float *total_energy, float *total_distance, float *avg_consumption);
+
+// Global SOC variable for trip reset
+static float soc = 100.0f; // Initialize to 100%, will be updated with real data
+
 #define PORT 4210
 // WiFi Configuration - Update these with your network credentials
 #define WIFI_SSID "HunorCar"
@@ -98,6 +104,7 @@ static float total_distance_traveled = 0.0f;  // km
 static float last_timestamp = 0.0f;
 static float current_consumption = 0.0f;  // kW/100km
 static bool consumption_initialized = false;
+static float soc_start = 100.0f; // Default to 100%, set on trip reset
 
 // Add extern declaration for your consumption display UI element
 extern lv_obj_t * uic_consumption_label;  // You'll need to add this to your UI
@@ -565,8 +572,14 @@ void ui_update_task_with_consumption(void *pvParameters) {
                 }
                 // Update consumption label
                 if (uic_avgconsumption) {
+                    float total_energy, total_distance, avg_consumption;
+                    get_trip_statistics(&total_energy, &total_distance, &avg_consumption);
                     char buf[32];
-                    snprintf(buf, sizeof(buf), "%.2f kW/100km", current_consumption);
+                    if (total_distance > 0.0f) {
+                        snprintf(buf, sizeof(buf), "Avg: %.2f kWh/100km", avg_consumption);
+                    } else {
+                        snprintf(buf, sizeof(buf), "Avg: -- kWh/100km");
+                    }
                     lv_label_set_text(uic_avgconsumption, buf);
                 }
                 // Update total distance traveled label
@@ -577,8 +590,15 @@ void ui_update_task_with_consumption(void *pvParameters) {
                 }
                 // Update total energy consumed label
                 if (uic_totalenergyconsumed) {
-                    char buf[32];
-                    snprintf(buf, sizeof(buf), "%.2f kWh", total_energy_consumed);
+                    char buf[64];
+                    // Integration-based value
+                    snprintf(buf, sizeof(buf), "E: %.2f kWh", total_energy_consumed);
+                    // SOC-based value
+                    float energy_used_Wh = (soc_start - data.soc) / 100.0f * 14000.0f;
+                    float energy_used_kWh = energy_used_Wh / 1000.0f;
+                    char soc_buf[32];
+                    snprintf(soc_buf, sizeof(soc_buf), ", SOC E: %.2f kWh", energy_used_kWh);
+                    strncat(buf, soc_buf, sizeof(buf) - strlen(buf) - 1);
                     lv_label_set_text(uic_totalenergyconsumed, buf);
                 }
                 // Update chart display
@@ -593,9 +613,12 @@ void ui_update_task_with_consumption(void *pvParameters) {
 }
 
 // Enhanced process_received_data function with trip statistics
-void process_received_data_with_consumption(float soc, float range, float temp, float amp, float volt, float watt, float speed_kmh) {
+void process_received_data_with_consumption(float soc_in, float range, float temp, float amp, float volt, float watt, float speed_kmh) {
     ESP_LOGI("DATA", "Received data - SOC: %.1f%%, Range: %.1f km, Temp: %.1f°C, Amp: %.1f A, Volt: %.1f V, Watt: %.1f W, Speed: %.1f km/h", 
-             soc, range, temp, amp, volt, watt, speed_kmh);
+             soc_in, range, temp, amp, volt, watt, speed_kmh);
+    
+    // Update global soc variable
+    soc = soc_in;
     
     // Convert watts to kW
     float power_kw = watt / 1000.0f;
@@ -616,7 +639,7 @@ void process_received_data_with_consumption(float soc, float range, float temp, 
     
     // Create data structure
     sensor_data_t data = {
-        .soc = soc,
+        .soc = soc_in,
         .range = range,
         .temp = temp,
         .amp = amp,
@@ -652,6 +675,7 @@ void reset_trip_statistics(void) {
     total_energy_consumed = 0.0f;
     total_distance_traveled = 0.0f;
     last_timestamp = 0.0f;
+    soc_start = soc; // soc is your current SOC value
     ESP_LOGI("TRIP", "Trip statistics reset");
 }
 

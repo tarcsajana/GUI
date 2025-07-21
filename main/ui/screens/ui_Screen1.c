@@ -78,7 +78,7 @@ void ui_Screen1_screen_init(void)
     ui_clockdate = lv_label_create(ui_Screen1);
     lv_obj_set_width(ui_clockdate, LV_SIZE_CONTENT);   /// 1
     lv_obj_set_height(ui_clockdate, LV_SIZE_CONTENT);    /// 1
-    lv_obj_set_x(ui_clockdate, 0);
+    lv_obj_set_x(ui_clockdate, 4);
     lv_obj_set_y(ui_clockdate, -331);
     lv_obj_set_align(ui_clockdate, LV_ALIGN_CENTER);
     lv_obj_set_style_text_align(ui_clockdate, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -87,7 +87,7 @@ void ui_Screen1_screen_init(void)
     ui_Consumption = lv_label_create(ui_Screen1);
     lv_obj_set_width(ui_Consumption, LV_SIZE_CONTENT);   /// 1
     lv_obj_set_height(ui_Consumption, LV_SIZE_CONTENT);    /// 1
-    lv_obj_set_x(ui_Consumption, 200);
+    lv_obj_set_x(ui_Consumption, 165);
     lv_obj_set_y(ui_Consumption, -269);
     lv_obj_set_align(ui_Consumption, LV_ALIGN_CENTER);
     lv_obj_set_style_text_align(ui_Consumption, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -96,7 +96,7 @@ void ui_Screen1_screen_init(void)
     ui_totalenergyconsumed = lv_label_create(ui_Screen1);
     lv_obj_set_width(ui_totalenergyconsumed, LV_SIZE_CONTENT);   /// 1
     lv_obj_set_height(ui_totalenergyconsumed, LV_SIZE_CONTENT);    /// 1
-    lv_obj_set_x(ui_totalenergyconsumed, 200);
+    lv_obj_set_x(ui_totalenergyconsumed, 165);
     lv_obj_set_y(ui_totalenergyconsumed, -218);
     lv_obj_set_align(ui_totalenergyconsumed, LV_ALIGN_CENTER);
     lv_obj_set_style_text_align(ui_totalenergyconsumed, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -105,7 +105,7 @@ void ui_Screen1_screen_init(void)
     ui_totaldistancetraveled = lv_label_create(ui_Screen1);
     lv_obj_set_width(ui_totaldistancetraveled, LV_SIZE_CONTENT);   /// 1
     lv_obj_set_height(ui_totaldistancetraveled, LV_SIZE_CONTENT);    /// 1
-    lv_obj_set_x(ui_totaldistancetraveled, 200);
+    lv_obj_set_x(ui_totaldistancetraveled, 165);
     lv_obj_set_y(ui_totaldistancetraveled, -168);
     lv_obj_set_align(ui_totaldistancetraveled, LV_ALIGN_CENTER);
     lv_obj_set_style_text_align(ui_totaldistancetraveled, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -114,7 +114,7 @@ void ui_Screen1_screen_init(void)
     ui_avgconsumption = lv_label_create(ui_Screen1);
     lv_obj_set_width(ui_avgconsumption, LV_SIZE_CONTENT);   /// 1
     lv_obj_set_height(ui_avgconsumption, LV_SIZE_CONTENT);    /// 1
-    lv_obj_set_x(ui_avgconsumption, 200);
+    lv_obj_set_x(ui_avgconsumption, 165);
     lv_obj_set_y(ui_avgconsumption, -122);
     lv_obj_set_align(ui_avgconsumption, LV_ALIGN_CENTER);
     lv_obj_set_style_text_align(ui_avgconsumption, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN | LV_STATE_DEFAULT);

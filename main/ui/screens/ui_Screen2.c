@@ -44,7 +44,7 @@ void ui_Screen2_screen_init(void)
     lv_chart_set_type(ui_Kwchart, LV_CHART_TYPE_LINE);
     lv_chart_set_point_count(ui_Kwchart, 60);
     lv_chart_set_range(ui_Kwchart, LV_CHART_AXIS_PRIMARY_Y, -60, 42);
-    lv_chart_set_div_line_count(ui_Kwchart, 17, 6);
+    lv_chart_set_div_line_count(ui_Kwchart, 9, 0);
     lv_chart_set_axis_tick(ui_Kwchart, LV_CHART_AXIS_PRIMARY_X, 10, 5, 6, 2, true, 60);
     lv_chart_set_axis_tick(ui_Kwchart, LV_CHART_AXIS_PRIMARY_Y, 10, 5, 5, 2, true, 50);
     lv_chart_set_axis_tick(ui_Kwchart, LV_CHART_AXIS_SECONDARY_Y, 10, 5, 5, 2, true, 25);
@@ -56,6 +56,8 @@ void ui_Screen2_screen_init(void)
                                                                   LV_CHART_AXIS_SECONDARY_Y);
     static lv_coord_t ui_Kwchart_series_2_array[] = { 0 };
     lv_chart_set_ext_y_array(ui_Kwchart, ui_Kwchart_series_2, ui_Kwchart_series_2_array);
+    lv_obj_set_style_line_color(ui_Kwchart, lv_color_hex(0x9C9D9C), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_line_opa(ui_Kwchart, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     lv_obj_set_style_text_font(ui_Kwchart, &lv_font_montserrat_20, LV_PART_TICKS | LV_STATE_DEFAULT);
 
