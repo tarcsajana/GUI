@@ -576,9 +576,9 @@ void ui_update_task_with_consumption(void *pvParameters) {
                     get_trip_statistics(&total_energy, &total_distance, &avg_consumption);
                     char buf[32];
                     if (total_distance > 0.0f) {
-                        snprintf(buf, sizeof(buf), "Avg: %.2f kWh/100km", avg_consumption);
+                        snprintf(buf, sizeof(buf), "%.2f kWh/100km", avg_consumption);
                     } else {
-                        snprintf(buf, sizeof(buf), "Avg: -- kWh/100km");
+                        snprintf(buf, sizeof(buf), "-- kWh/100km");
                     }
                     lv_label_set_text(uic_avgconsumption, buf);
                 }
@@ -592,12 +592,12 @@ void ui_update_task_with_consumption(void *pvParameters) {
                 if (uic_totalenergyconsumed) {
                     char buf[64];
                     // Integration-based value
-                    snprintf(buf, sizeof(buf), "E: %.2f kWh", total_energy_consumed);
+                    snprintf(buf, sizeof(buf), "%.2f kWh", total_energy_consumed);
                     // SOC-based value
                     float energy_used_Wh = (soc_start - data.soc) / 100.0f * 14000.0f;
                     float energy_used_kWh = energy_used_Wh / 1000.0f;
                     char soc_buf[32];
-                    snprintf(soc_buf, sizeof(soc_buf), ", SOC E: %.2f kWh", energy_used_kWh);
+                    snprintf(soc_buf, sizeof(soc_buf), "%.2f kWh", energy_used_kWh);
                     strncat(buf, soc_buf, sizeof(buf) - strlen(buf) - 1);
                     lv_label_set_text(uic_totalenergyconsumed, buf);
                 }
