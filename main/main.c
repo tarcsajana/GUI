@@ -125,10 +125,19 @@ float calculate_consumption(float power_kw, float speed_kmh) {
 void update_trip_statistics(float power_kw, float speed_kmh, float current_time) {
     if (last_timestamp > 0.0f && current_time > last_timestamp) {
         float time_delta = current_time - last_timestamp; // in seconds
-        float distance_delta = (speed_kmh * time_delta) / 3600.0f; // km
         
-        // Update total distance
-        total_distance_traveled += distance_delta;
+        // Only calculate distance if speed is valid (not SNA=255 and reasonable range)
+        if (speed_kmh > 0.1f && speed_kmh < 300.0f && speed_kmh != 255.0f) {
+            float distance_delta = (speed_kmh * time_delta) / 3600.0f; // km
+            
+            // Update total distance
+            total_distance_traveled += distance_delta;
+            
+            ESP_LOGD("TRIP", "Distance updated: +%.3f km (speed: %.1f km/h, total: %.1f km)", 
+                     distance_delta, speed_kmh, total_distance_traveled);
+        } else if (speed_kmh > 0.0f) {
+            ESP_LOGD("TRIP", "Speed filtered out: %.1f km/h (invalid/SNA)", speed_kmh);
+        }
         
         // Update total energy consumed (only negative power, i.e., usage)
         if (power_kw < 0.0f) { // Only count energy used (driving)
@@ -819,7 +828,14 @@ void udp_server_task(void *pvParameters) {
 
                     // Use speed if available, otherwise calculate from range changes
                     if (cJSON_IsNumber(speed_item)) {
-                        speed = (float)speed_item->valuedouble;
+                        float raw_speed = (float)speed_item->valuedouble;
+                        // Filter out SNA (Signal Not Available) values and other invalid readings
+                        if (raw_speed != 255.0f && raw_speed >= 0.0f && raw_speed < 300.0f) {
+                            speed = raw_speed;
+                        } else {
+                            ESP_LOGW("UDP", "Invalid speed value received: %.1f (filtered out)", raw_speed);
+                            speed = 0.0f; // Set to 0 for invalid readings
+                        }
                     }
                      process_received_data_with_consumption(soc, range, temp, battA, battV, battW, speed);
                 } else {
