@@ -31,6 +31,7 @@ extern lv_obj_t * ui____initial_actions0;
 
 // IMAGES AND IMAGE SETS
 LV_IMG_DECLARE(ui_img_jo_png);    // assets/jo.png
+LV_IMG_DECLARE(ui_img_115941442);    // assets/ef9f6125-5462-4a14-b930-3fc3f232cea1.png
 
 // UI INIT
 void ui_init(void);
