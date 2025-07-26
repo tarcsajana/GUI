@@ -23,7 +23,7 @@ void ui_event_Button2(lv_event_t * e)
     lv_event_code_t event_code = lv_event_get_code(e);
 
     if(event_code == LV_EVENT_CLICKED) {
-        _ui_screen_change(&ui_Livedata, LV_SCR_LOAD_ANIM_FADE_ON, 500, 0, &ui_Livedata_screen_init);
+        _ui_screen_change(&ui_Livedata, LV_SCR_LOAD_ANIM_NONE, 500, 0, &ui_Livedata_screen_init);
     }
 }
 
@@ -43,7 +43,8 @@ void ui_Screen2_screen_init(void)
     lv_obj_set_align(ui_Kwchart, LV_ALIGN_CENTER);
     lv_chart_set_type(ui_Kwchart, LV_CHART_TYPE_LINE);
     lv_chart_set_point_count(ui_Kwchart, 60);
-    lv_chart_set_range(ui_Kwchart, LV_CHART_AXIS_PRIMARY_Y, -60, 42);
+    lv_chart_set_range(ui_Kwchart, LV_CHART_AXIS_PRIMARY_Y, -60, 100);
+    lv_chart_set_range(ui_Kwchart, LV_CHART_AXIS_SECONDARY_Y, -60, 100);
     lv_chart_set_div_line_count(ui_Kwchart, 9, 0);
     lv_chart_set_axis_tick(ui_Kwchart, LV_CHART_AXIS_PRIMARY_X, 10, 5, 6, 2, true, 60);
     lv_chart_set_axis_tick(ui_Kwchart, LV_CHART_AXIS_PRIMARY_Y, 10, 5, 5, 2, true, 50);

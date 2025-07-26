@@ -564,9 +564,9 @@ void ui_update_task_with_consumption(void *pvParameters) {
                 if (uic_consumption_label != NULL) {
                     char consumption_text[32];
                     if (current_consumption > 0.0f) {
-                        snprintf(consumption_text, sizeof(consumption_text), "%.1f kW/100km", current_consumption);
+                        snprintf(consumption_text, sizeof(consumption_text), "%.1f", current_consumption);
                     } else {
-                        snprintf(consumption_text, sizeof(consumption_text), "-- kW/100km");
+                        snprintf(consumption_text, sizeof(consumption_text), "00.0");
                     }
                     lv_label_set_text(uic_consumption_label, consumption_text);
                 }
@@ -576,29 +576,22 @@ void ui_update_task_with_consumption(void *pvParameters) {
                     get_trip_statistics(&total_energy, &total_distance, &avg_consumption);
                     char buf[32];
                     if (total_distance > 0.0f) {
-                        snprintf(buf, sizeof(buf), "Avg: %.2f kWh/100km", avg_consumption);
+                        snprintf(buf, sizeof(buf), "%.1f", avg_consumption);
                     } else {
-                        snprintf(buf, sizeof(buf), "Avg: -- kWh/100km");
+                        snprintf(buf, sizeof(buf), "00.0");
                     }
                     lv_label_set_text(uic_avgconsumption, buf);
                 }
                 // Update total distance traveled label
                 if (uic_totaldistancetraveled) {
                     char buf[32];
-                    snprintf(buf, sizeof(buf), "%.1f km", total_distance_traveled);
+                    snprintf(buf, sizeof(buf), "%.1f", total_distance_traveled);
                     lv_label_set_text(uic_totaldistancetraveled, buf);
                 }
                 // Update total energy consumed label
                 if (uic_totalenergyconsumed) {
-                    char buf[64];
-                    // Integration-based value
-                    snprintf(buf, sizeof(buf), "E: %.2f kWh", total_energy_consumed);
-                    // SOC-based value
-                    float energy_used_Wh = (soc_start - data.soc) / 100.0f * 14000.0f;
-                    float energy_used_kWh = energy_used_Wh / 1000.0f;
-                    char soc_buf[32];
-                    snprintf(soc_buf, sizeof(soc_buf), ", SOC E: %.2f kWh", energy_used_kWh);
-                    strncat(buf, soc_buf, sizeof(buf) - strlen(buf) - 1);
+                    char buf[32];
+                    snprintf(buf, sizeof(buf), "%.1f", total_energy_consumed);
                     lv_label_set_text(uic_totalenergyconsumed, buf);
                 }
                 // Update chart display
@@ -616,6 +609,12 @@ void ui_update_task_with_consumption(void *pvParameters) {
 void process_received_data_with_consumption(float soc_in, float range, float temp, float amp, float volt, float watt, float speed_kmh) {
     ESP_LOGI("DATA", "Received data - SOC: %.1f%%, Range: %.1f km, Temp: %.1f°C, Amp: %.1f A, Volt: %.1f V, Watt: %.1f W, Speed: %.1f km/h", 
              soc_in, range, temp, amp, volt, watt, speed_kmh);
+    
+    // Ignore speed values above 130 km/h
+    if (speed_kmh > 130.0f) {
+        ESP_LOGW("DATA", "Speed %.1f km/h ignored (above 130 km/h)", speed_kmh);
+        return;
+    }
     
     // Update global soc variable
     soc = soc_in;
@@ -847,7 +846,7 @@ void app_main() {
     
     // Create synchronization objects
     chart_mutex = xSemaphoreCreateMutex();
-    sensor_data_queue = xQueueCreate(10, sizeof(sensor_data_t));
+    sensor_data_queue = xQueueCreate(20, sizeof(sensor_data_t)); // Increased from 10 to 20
     
     if (chart_mutex == NULL || sensor_data_queue == NULL) {
         ESP_LOGE("MAIN", "Failed to create synchronization objects");
