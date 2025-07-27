@@ -7,3 +7,5 @@ ui_helpers.c
 ui_events.c
 images/ui_img_jo_png.c
 images/ui_img_115941442.c
+images/ui_img_batt_empty_png.c
+images/ui_img_batt_png.c

@@ -6,6 +6,8 @@ SET(SOURCES screens/ui_Livedata.c
     ui_helpers.c
     ui_events.c
     images/ui_img_jo_png.c
-    images/ui_img_115941442.c)
+    images/ui_img_115941442.c
+    images/ui_img_batt_empty_png.c
+    images/ui_img_batt_png.c)
 
 add_library(ui ${SOURCES})

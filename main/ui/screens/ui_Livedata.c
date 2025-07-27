@@ -80,7 +80,7 @@ void ui_Livedata_screen_init(void)
     lv_obj_set_style_bg_opa(ui_Livedata, 255, LV_PART_SCROLLBAR | LV_STATE_DEFAULT);
 
     ui_SOCbar = lv_bar_create(ui_Livedata);
-    lv_bar_set_value(ui_SOCbar, 25, LV_ANIM_OFF);
+    lv_bar_set_value(ui_SOCbar, 55, LV_ANIM_OFF);
     lv_bar_set_start_value(ui_SOCbar, 0, LV_ANIM_OFF);
     lv_obj_set_width(ui_SOCbar, 950);
     lv_obj_set_height(ui_SOCbar, 50);
