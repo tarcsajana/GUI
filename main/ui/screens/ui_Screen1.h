@@ -34,9 +34,6 @@ extern lv_obj_t * ui_Label18;
 extern lv_obj_t * ui_Label19;
 extern lv_obj_t * ui_Label20;
 extern lv_obj_t * ui_Label21;
-extern lv_obj_t * ui_Image1;
-extern lv_obj_t * ui_SOCbar2;
-extern lv_obj_t * ui_SOC2;
 // CUSTOM VARIABLES
 extern lv_obj_t * uic_clock_time;
 extern lv_obj_t * uic_clock_date;
