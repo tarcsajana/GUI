@@ -40,6 +40,20 @@ static float soc = 100.0f; // Initialize to 100%, will be updated with real data
 #define WIFI_CONNECTED_BIT BIT0
 #define WIFI_FAIL_BIT BIT1
 
+// DTC (Diagnostic Trouble Code) handling
+#define MAX_DTC_CODES 20
+#define MAX_DTC_STRING_LENGTH 64
+
+typedef struct {
+    char dtc_codes[MAX_DTC_CODES][MAX_DTC_STRING_LENGTH];
+    int dtc_count;
+    char response_id[16];
+    bool has_dtc_data;
+} dtc_data_t;
+
+static dtc_data_t current_dtc_data = {0};
+static SemaphoreHandle_t dtc_mutex = NULL;
+
 // Chart data storage
 #define CHART_DATA_POINTS 60
 static float kw_data[CHART_DATA_POINTS];
@@ -96,6 +110,12 @@ extern lv_obj_t * ui_Kwchart;
 extern lv_obj_t * uic_Kwchart;
 extern lv_obj_t * uic_clock_time;   // Time display label
 extern lv_obj_t * uic_clock_date;   // Date display label
+
+// DTC UI elements - you'll need to add these to your UI
+extern lv_obj_t * ui_dtc_label;     // Label to show DTC status
+extern lv_obj_t * ui_dtc_list;      // List or text area to show DTC codes
+extern lv_obj_t * ui_dtc_count;     // Label to show DTC count
+
 #define CONSUMPTION_SAMPLES 30  // Number of samples for rolling average
 static float consumption_history[CONSUMPTION_SAMPLES];
 static int consumption_index = 0;
@@ -111,6 +131,140 @@ extern lv_obj_t * uic_consumption_label;  // You'll need to add this to your UI
 extern lv_obj_t * uic_avgconsumption;
 extern lv_obj_t * uic_totaldistancetraveled;
 extern lv_obj_t * uic_totalenergyconsumed;
+
+// DTC handling functions
+void process_dtc_data(const char* json_data) {
+    cJSON *json = cJSON_Parse(json_data);
+    if (!json) {
+        ESP_LOGW("DTC", "Failed to parse DTC JSON data");
+        return;
+    }
+    
+    cJSON *type_item = cJSON_GetObjectItem(json, "type");
+    if (!cJSON_IsString(type_item) || strcmp(type_item->valuestring, "diagnostic") != 0) {
+        cJSON_Delete(json);
+        return; // Not a diagnostic message
+    }
+    
+    if (dtc_mutex != NULL && xSemaphoreTake(dtc_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        // Clear previous DTC data
+        memset(&current_dtc_data, 0, sizeof(dtc_data_t));
+        
+        cJSON *dtcs_item = cJSON_GetObjectItem(json, "dtcs");
+        cJSON *count_item = cJSON_GetObjectItem(json, "count");
+        cJSON *response_id_item = cJSON_GetObjectItem(json, "response_id");
+        
+        if (cJSON_IsString(dtcs_item) && cJSON_IsNumber(count_item)) {
+            current_dtc_data.dtc_count = (int)count_item->valuedouble;
+            current_dtc_data.has_dtc_data = true;
+            
+            if (cJSON_IsString(response_id_item)) {
+                strncpy(current_dtc_data.response_id, response_id_item->valuestring, 
+                       sizeof(current_dtc_data.response_id) - 1);
+            }
+            
+            if (current_dtc_data.dtc_count > 0 && strlen(dtcs_item->valuestring) > 0) {
+                // Parse comma-separated DTC codes
+                char *dtc_string = strdup(dtcs_item->valuestring);
+                char *token = strtok(dtc_string, ",");
+                int i = 0;
+                
+                while (token != NULL && i < MAX_DTC_CODES) {
+                    // Remove leading/trailing whitespace
+                    while (*token == ' ') token++;
+                    char *end = token + strlen(token) - 1;
+                    while (end > token && *end == ' ') end--;
+                    *(end + 1) = '\0';
+                    
+                    strncpy(current_dtc_data.dtc_codes[i], token, MAX_DTC_STRING_LENGTH - 1);
+                    i++;
+                    token = strtok(NULL, ",");
+                }
+                
+                current_dtc_data.dtc_count = i; // Update with actual count
+                free(dtc_string);
+                
+                ESP_LOGI("DTC", "Received %d DTC codes", current_dtc_data.dtc_count);
+                for (int j = 0; j < current_dtc_data.dtc_count; j++) {
+                    ESP_LOGI("DTC", "DTC[%d]: %s", j, current_dtc_data.dtc_codes[j]);
+                }
+            } else {
+                ESP_LOGI("DTC", "No DTC codes found - vehicle is healthy");
+            }
+        }
+        
+        xSemaphoreGive(dtc_mutex);
+    }
+    
+    cJSON_Delete(json);
+}
+
+void update_dtc_display(void) {
+    if (dtc_mutex != NULL && xSemaphoreTake(dtc_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        if (lvgl_port_lock(pdMS_TO_TICKS(100))) {
+            // Update DTC status label
+            if (ui_dtc_label != NULL) {
+                if (current_dtc_data.has_dtc_data) {
+                    if (current_dtc_data.dtc_count > 0) {
+                        lv_label_set_text(ui_dtc_label, "DTC: ACTIVE");
+                        lv_obj_set_style_text_color(ui_dtc_label, lv_color_hex(0xFF0000), LV_PART_MAIN | LV_STATE_DEFAULT);
+                    } else {
+                        lv_label_set_text(ui_dtc_label, "DTC: OK");
+                        lv_obj_set_style_text_color(ui_dtc_label, lv_color_hex(0x00FF00), LV_PART_MAIN | LV_STATE_DEFAULT);
+                    }
+                } else {
+                    lv_label_set_text(ui_dtc_label, "DTC: --");
+                    lv_obj_set_style_text_color(ui_dtc_label, lv_color_hex(0x808080), LV_PART_MAIN | LV_STATE_DEFAULT);
+                }
+            }
+            
+            // Update DTC count
+            if (ui_dtc_count != NULL) {
+                char count_text[16];
+                if (current_dtc_data.has_dtc_data) {
+                    snprintf(count_text, sizeof(count_text), "%d", current_dtc_data.dtc_count);
+                } else {
+                    snprintf(count_text, sizeof(count_text), "--");
+                }
+                lv_label_set_text(ui_dtc_count, count_text);
+            }
+            
+            // Update DTC list (if you have a text area or list widget)
+            if (ui_dtc_list != NULL) {
+                if (current_dtc_data.has_dtc_data && current_dtc_data.dtc_count > 0) {
+                    char dtc_text[512] = "";
+                    int offset = 0;
+                    
+                    for (int i = 0; i < current_dtc_data.dtc_count && i < 10; i++) { // Limit to 10 codes for display
+                        offset += snprintf(dtc_text + offset, sizeof(dtc_text) - offset, 
+                                         "%s\n", current_dtc_data.dtc_codes[i]);
+                        if (offset >= sizeof(dtc_text) - 50) break; // Prevent buffer overflow
+                    }
+                    
+                    if (current_dtc_data.dtc_count > 10) {
+                        snprintf(dtc_text + offset, sizeof(dtc_text) - offset, 
+                                "... and %d more", current_dtc_data.dtc_count - 10);
+                    }
+                    
+                    lv_label_set_text(ui_dtc_list, dtc_text);
+                } else {
+                    lv_label_set_text(ui_dtc_list, "No DTC codes");
+                }
+            }
+            
+            lvgl_port_unlock();
+        }
+        xSemaphoreGive(dtc_mutex);
+    }
+}
+
+// Function to get current DTC data (for external access)
+void get_current_dtc_data(dtc_data_t *dtc_data) {
+    if (dtc_mutex != NULL && xSemaphoreTake(dtc_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        memcpy(dtc_data, &current_dtc_data, sizeof(dtc_data_t));
+        xSemaphoreGive(dtc_mutex);
+    }
+}
 
 // Function to calculate consumption based on current power and speed
 float calculate_consumption(float power_kw, float speed_kmh) {
@@ -594,8 +748,8 @@ void ui_update_task_with_consumption(void *pvParameters) {
                     snprintf(buf, sizeof(buf), "%.1f", total_energy_consumed);
                     lv_label_set_text(uic_totalenergyconsumed, buf);
                 }
-                // Update chart display
-                //update_chart_display();
+                // Update DTC display
+                update_dtc_display();
                 
                 lvgl_port_unlock();
             } else {
@@ -795,34 +949,39 @@ void udp_server_task(void *pvParameters) {
             
             cJSON *json = cJSON_Parse(rx_buffer);
             if (json) {
-                cJSON *soc_item = cJSON_GetObjectItem(json, "soc");
-                cJSON *range_item = cJSON_GetObjectItem(json, "range");
-                cJSON *temp_item = cJSON_GetObjectItem(json, "celltemp");
-                cJSON *battA_item = cJSON_GetObjectItem(json, "battA");
-                cJSON *battV_item = cJSON_GetObjectItem(json, "battV");
-                cJSON *battW_item = cJSON_GetObjectItem(json, "battW");
-                cJSON *speed_item = cJSON_GetObjectItem(json, "speed_kmh");  // Changed from "speed" to "speed_kmh"
-
-                // Check if all required fields exist and are numbers
-                if (cJSON_IsNumber(soc_item) && cJSON_IsNumber(range_item) && 
-                    cJSON_IsNumber(temp_item) && cJSON_IsNumber(battA_item) && 
-                    cJSON_IsNumber(battV_item) && cJSON_IsNumber(battW_item)) {
-                    
-                    float soc = (float)soc_item->valuedouble;
-                    float range = (float)range_item->valuedouble;
-                    float temp = (float)temp_item->valuedouble;
-                    float battA = (float)battA_item->valuedouble;
-                    float battV = (float)battV_item->valuedouble;
-                    float battW = (float)battW_item->valuedouble;
-                    float speed = 0.0f;
-
-                    // Use speed if available, otherwise calculate from range changes
-                    if (cJSON_IsNumber(speed_item)) {
-                        speed = (float)speed_item->valuedouble;
-                    }
-                     process_received_data_with_consumption(soc, range, temp, battA, battV, battW, speed);
+                cJSON *type_item = cJSON_GetObjectItem(json, "type");
+                if (type_item && cJSON_IsString(type_item) && strcmp(type_item->valuestring, "diagnostic") == 0) {
+                    process_dtc_data(cJSON_Print(json));
                 } else {
-                    ESP_LOGW("UDP", "JSON missing required fields or invalid types");
+                    cJSON *soc_item = cJSON_GetObjectItem(json, "soc");
+                    cJSON *range_item = cJSON_GetObjectItem(json, "range");
+                    cJSON *temp_item = cJSON_GetObjectItem(json, "celltemp");
+                    cJSON *battA_item = cJSON_GetObjectItem(json, "battA");
+                    cJSON *battV_item = cJSON_GetObjectItem(json, "battV");
+                    cJSON *battW_item = cJSON_GetObjectItem(json, "battW");
+                    cJSON *speed_item = cJSON_GetObjectItem(json, "speed_kmh");  // Changed from "speed" to "speed_kmh"
+
+                    // Check if all required fields exist and are numbers
+                    if (cJSON_IsNumber(soc_item) && cJSON_IsNumber(range_item) && 
+                        cJSON_IsNumber(temp_item) && cJSON_IsNumber(battA_item) && 
+                        cJSON_IsNumber(battV_item) && cJSON_IsNumber(battW_item)) {
+                        
+                        float soc = (float)soc_item->valuedouble;
+                        float range = (float)range_item->valuedouble;
+                        float temp = (float)temp_item->valuedouble;
+                        float battA = (float)battA_item->valuedouble;
+                        float battV = (float)battV_item->valuedouble;
+                        float battW = (float)battW_item->valuedouble;
+                        float speed = 0.0f;
+
+                        // Use speed if available, otherwise calculate from range changes
+                        if (cJSON_IsNumber(speed_item)) {
+                            speed = (float)speed_item->valuedouble;
+                        }
+                         process_received_data_with_consumption(soc, range, temp, battA, battV, battW, speed);
+                    } else {
+                        ESP_LOGW("UDP", "JSON missing required fields or invalid types");
+                    }
                 }
                 cJSON_Delete(json);
             } else {
@@ -847,8 +1006,9 @@ void app_main() {
     // Create synchronization objects
     chart_mutex = xSemaphoreCreateMutex();
     sensor_data_queue = xQueueCreate(20, sizeof(sensor_data_t)); // Increased from 10 to 20
+    dtc_mutex = xSemaphoreCreateMutex();
     
-    if (chart_mutex == NULL || sensor_data_queue == NULL) {
+    if (chart_mutex == NULL || sensor_data_queue == NULL || dtc_mutex == NULL) {
         ESP_LOGE("MAIN", "Failed to create synchronization objects");
         return;
     }
@@ -899,6 +1059,11 @@ void app_main() {
         // Initialize clock displays
         if (uic_clock_time != NULL) lv_label_set_text(uic_clock_time, "--:--:--");
         if (uic_clock_date != NULL) lv_label_set_text(uic_clock_date, "----/--/--");
+        
+        // Initialize DTC displays
+        if (ui_dtc_label != NULL) lv_label_set_text(ui_dtc_label, "DTC: --");
+        if (ui_dtc_count != NULL) lv_label_set_text(ui_dtc_count, "--");
+        if (ui_dtc_list != NULL) lv_label_set_text(ui_dtc_list, "No DTC data");
         
         lvgl_port_unlock();
     }
