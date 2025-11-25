@@ -6,7 +6,7 @@ file(GLOB_RECURSE srcs *.c
                    )
 set(include_dirs
     .
-    UI
+    ui
     )
 idf_component_register( SRCS ${srcs}
                       INCLUDE_DIRS ${include_dirs}

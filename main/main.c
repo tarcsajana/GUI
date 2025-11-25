@@ -21,7 +21,6 @@
 #include <sys/time.h>
 #include "esp_sntp.h"
 #include "esp_timer.h"
-#include "esp_system.h" // For esp_restart
 
 // Function prototype for get_trip_statistics
 void get_trip_statistics(float *total_energy, float *total_distance, float *avg_consumption);
@@ -40,13 +39,6 @@ static float soc = 100.0f; // Initialize to 100%, will be updated with real data
 #define WIFI_CONNECTED_BIT BIT0
 #define WIFI_FAIL_BIT BIT1
 
-// Chart data storage
-#define CHART_DATA_POINTS 60
-static float kw_data[CHART_DATA_POINTS];
-static float soc_data[CHART_DATA_POINTS];
-static int data_index = 0;
-static bool chart_initialized = false;
-static SemaphoreHandle_t chart_mutex = NULL;
 static bool time_synchronized = false;
 static char current_time_str[32] = "00:00:00";
 static char current_date_str[32] = "2024-01-01";
@@ -61,14 +53,6 @@ static char current_date_str[32] = "2024-01-01";
 #define NIGHT_END_HOUR 6        // 6:00 AM - end of night
 static uint8_t current_brightness = BRIGHTNESS_DAY;
 static bool brightness_initialized = false;
-// Chart series references - store them once during initialization
-static lv_chart_series_t * kw_series = NULL;
-static lv_chart_series_t * soc_series = NULL;
-static bool first_data_received = false;
-static TickType_t last_chart_update = 0;
-static const TickType_t CHART_UPDATE_INTERVAL = pdMS_TO_TICKS(60000); // 60 seconds
-
-
 // Data queue for thread-safe communication
 typedef struct {
     float soc;
@@ -100,11 +84,6 @@ extern lv_obj_t * ui_labelbattamps;
 extern lv_obj_t * ui_labelcelltemp;
 extern lv_obj_t * ui_labelvolt;
 extern lv_obj_t * ui_wifi;
-extern lv_obj_t * uic_Label9;
-extern lv_obj_t * uic_Label8; 
-// Screen2 chart elements
-extern lv_obj_t * ui_Kwchart;
-extern lv_obj_t * uic_Kwchart;
 extern lv_obj_t * uic_clock_time;   // Time display label
 extern lv_obj_t * uic_clock_date;   // Date display label
 #define CONSUMPTION_SAMPLES 30  // Number of samples for rolling average
@@ -307,181 +286,6 @@ void clock_update_task(void *pvParameters)
     }
 }
 
-// Initialize chart series once - call this after ui_init()
-void initialize_chart_series(void) {
-    if (ui_Kwchart == NULL) {
-        ESP_LOGW("CHART", "Chart object not available for initialization");
-        return;
-    }
-    
-    if (lvgl_port_lock(pdMS_TO_TICKS(100))) {
-        ESP_LOGI("CHART", "Initializing chart series...");
-        
-        // First, set the chart configuration BEFORE adding series
-        lv_chart_set_type(ui_Kwchart, LV_CHART_TYPE_LINE);
-        lv_chart_set_point_count(ui_Kwchart, CHART_DATA_POINTS);
-        lv_chart_set_range(ui_Kwchart, LV_CHART_AXIS_PRIMARY_Y, -60, 100);
-        
-        // Create new series
-        kw_series = lv_chart_add_series(ui_Kwchart, lv_color_hex(0xFF0000), LV_CHART_AXIS_PRIMARY_Y);
-        soc_series = lv_chart_add_series(ui_Kwchart, lv_color_hex(0x00FF00), LV_CHART_AXIS_PRIMARY_Y);
-        
-        if (kw_series && soc_series) {
-            ESP_LOGI("CHART", "Series created successfully, clearing initial data...");
-            
-            // IMPORTANT: Clear all points immediately after series creation
-            // This removes the default/initialization data that LVGL adds
-            lv_chart_set_all_value(ui_Kwchart, kw_series, LV_CHART_POINT_NONE);
-            lv_chart_set_all_value(ui_Kwchart, soc_series, LV_CHART_POINT_NONE);
-            
-            // Initialize our data arrays to known values
-            for (int i = 0; i < CHART_DATA_POINTS; i++) {
-                kw_data[i] = 0.0f;
-                soc_data[i] = 0.0f;
-            }
-            data_index = 0;
-            
-            // Force a complete chart refresh to ensure clean state
-            lv_chart_refresh(ui_Kwchart);
-            lv_obj_invalidate(ui_Kwchart);
-            
-            chart_initialized = true;
-            ESP_LOGI("CHART", "Chart series initialized and cleared successfully");
-        } else {
-            ESP_LOGE("CHART", "Failed to create chart series");
-        }
-        
-        lvgl_port_unlock();
-    }
-}
-// Enhanced clear function that should be called when first real data arrives
-void clear_chart_artifacts(void) {
-    if (!chart_initialized || ui_Kwchart == NULL || kw_series == NULL || soc_series == NULL) {
-        return;
-    }
-    
-    ESP_LOGI("CHART", "Clearing chart artifacts...");
-    
-    if (lvgl_port_lock(pdMS_TO_TICKS(100))) {
-        // Method 1: Clear all points to "no data" state
-        lv_chart_set_all_value(ui_Kwchart, kw_series, LV_CHART_POINT_NONE);
-        lv_chart_set_all_value(ui_Kwchart, soc_series, LV_CHART_POINT_NONE);
-        
-        // Method 2: Alternative - remove and recreate series (more aggressive)
-        // Uncomment these lines if Method 1 doesn't work:
-        /*
-        lv_chart_remove_series(ui_Kwchart, kw_series);
-        lv_chart_remove_series(ui_Kwchart, soc_series);
-        
-        kw_series = lv_chart_add_series(ui_Kwchart, lv_color_hex(0xFF0000), LV_CHART_AXIS_PRIMARY_Y);
-        soc_series = lv_chart_add_series(ui_Kwchart, lv_color_hex(0x00FF00), LV_CHART_AXIS_PRIMARY_Y);
-        
-        if (kw_series && soc_series) {
-            lv_chart_set_all_value(ui_Kwchart, kw_series, LV_CHART_POINT_NONE);
-            lv_chart_set_all_value(ui_Kwchart, soc_series, LV_CHART_POINT_NONE);
-        }
-        */
-        
-        // Reset data arrays
-        for (int i = 0; i < CHART_DATA_POINTS; i++) {
-            kw_data[i] = 0.0f;
-            soc_data[i] = 0.0f;
-        }
-        data_index = 0;
-        
-        // Force complete refresh
-        lv_chart_refresh(ui_Kwchart);
-        lv_obj_invalidate(ui_Kwchart);
-        
-        lvgl_port_unlock();
-    }
-}
-void update_chart_display(void) {
-    if (!chart_initialized || ui_Kwchart == NULL || kw_series == NULL || soc_series == NULL) {
-        ESP_LOGW("CHART", "Chart not properly initialized");
-        return;
-    }
-    
-    if (lvgl_port_lock(pdMS_TO_TICKS(100))) {
-        // Take mutex to protect chart data
-        if (chart_mutex != NULL && xSemaphoreTake(chart_mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-            
-            // Get the most recent data point (the one we just added)
-            int current_idx = (data_index - 1 + CHART_DATA_POINTS) % CHART_DATA_POINTS;
-            
-            // Log the actual values we're about to display
-            ESP_LOGI("CHART", "Displaying chart data: kW=%.1f, SOC=%.1f (index=%d)", 
-                     kw_data[current_idx], soc_data[current_idx], current_idx);
-            
-            // Add only the latest point (recommended for real-time updates)
-            lv_chart_set_next_value(ui_Kwchart, kw_series, (lv_coord_t)kw_data[current_idx]);
-            lv_chart_set_next_value(ui_Kwchart, soc_series, (lv_coord_t)soc_data[current_idx]);
-            
-            // Force chart refresh
-            lv_obj_invalidate(ui_Kwchart);
-            
-            xSemaphoreGive(chart_mutex);
-            
-            ESP_LOGI("CHART", "Chart updated with kW=%.1f, SOC=%.1f", 
-                     kw_data[current_idx], soc_data[current_idx]);
-        }
-        
-        lvgl_port_unlock();
-    }
-}
-void update_chart_data_safe(float kw_value, float soc_value) {
-    if (!chart_initialized) {
-        ESP_LOGW("CHART", "Chart not initialized, skipping update");
-        return;
-    }
-    
-    ESP_LOGI("CHART", "update_chart_data_safe called with kW=%.1f, SOC=%.1f", kw_value, soc_value);
-    
-    // Clear artifacts on first real data
-    if (!first_data_received) {
-        clear_chart_artifacts();
-        first_data_received = true;
-        ESP_LOGI("CHART", "First data received, clearing artifacts");
-    }
-    
-    // Check if enough time has passed since last chart update
-    TickType_t current_time = xTaskGetTickCount();
-    if (current_time - last_chart_update < CHART_UPDATE_INTERVAL) {
-        ESP_LOGI("CHART", "Chart update skipped - waiting for interval (time since last: %lu ms)", 
-                 (unsigned long)((current_time - last_chart_update) * portTICK_PERIOD_MS));
-        return; // IMPORTANT: Return here, don't call update_chart_display()
-    }
-    
-    // Take mutex to protect chart data
-    if (chart_mutex != NULL && xSemaphoreTake(chart_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-        // Validate input values
-        if (kw_value < -60.0f) kw_value = -60.0f;
-        if (kw_value > 42.0f) kw_value = 42.0f;
-        if (soc_value < 0.0f) soc_value = 0.0f;
-        if (soc_value > 100.0f) soc_value = 100.0f;
-        
-        ESP_LOGI("CHART", "Storing data at index %d: kW=%.1f, SOC=%.1f", data_index, kw_value, soc_value);
-        
-        // Store data in circular buffer
-        kw_data[data_index] = kw_value;
-        soc_data[data_index] = soc_value;
-        
-        // Move to next index (circular buffer)
-        data_index = (data_index + 1) % CHART_DATA_POINTS;
-        
-        // Update the last update time
-        last_chart_update = current_time;
-        
-        xSemaphoreGive(chart_mutex);
-        
-        ESP_LOGI("CHART", "Chart data stored successfully: kW=%.1f, SOC=%.1f%%", kw_value, soc_value);
-        
-        // ONLY call update_chart_display() when we actually stored new data
-        update_chart_display();
-    } else {
-        ESP_LOGE("CHART", "Failed to acquire chart mutex");
-    }
-}
 
 void ui_update_task_with_consumption(void *pvParameters) {
     sensor_data_t data;
@@ -494,9 +298,6 @@ void ui_update_task_with_consumption(void *pvParameters) {
             // Convert watts to kW
             float watt_kw = data.watt / 1000.0f;
             
-            // Update chart data (thread-safe)
-            update_chart_data_safe(watt_kw, data.soc);
-            
             // Update UI elements - must be done with LVGL lock
             if (lvgl_port_lock(pdMS_TO_TICKS(100))) {
                 // Validate UI objects before using them
@@ -505,11 +306,7 @@ void ui_update_task_with_consumption(void *pvParameters) {
                             snprintf(soc_text, sizeof(soc_text), "%.1f%%", data.soc);
                             lv_label_set_text(ui_SOC, soc_text);
                         }
-                        if (uic_Label9 != NULL) {
-                            char soc_text[16];
-                            snprintf(soc_text, sizeof(soc_text), "%.1f%%", data.soc);
-                            lv_label_set_text(uic_Label9, soc_text);
-                        }
+                    
                         
                         if (ui_SOCbar != NULL) {
                         int soc_val = (int)data.soc;
@@ -543,11 +340,7 @@ void ui_update_task_with_consumption(void *pvParameters) {
                     snprintf(watt_text, sizeof(watt_text), "%.1fkw", watt_kw);
                     lv_label_set_text(ui_labelbattw, watt_text);
                 }
-                if (uic_Label8 != NULL) {
-                    char watt_text[16];
-                    snprintf(watt_text, sizeof(watt_text), "%.1fkW", watt_kw);
-                    lv_label_set_text(uic_Label8, watt_text);
-                }
+                
                 
                 if (ui_battw != NULL) {
                     // Clamp watt value between -60,000 and +42,000 W
@@ -657,9 +450,6 @@ void ui_update_task_with_consumption(void *pvParameters) {
                     snprintf(buf, sizeof(buf), "%.1f", total_energy_consumed);
                     lv_label_set_text(uic_totalenergyconsumed, buf);
                 }
-                // Update chart display
-                //update_chart_display();
-                
                 lvgl_port_unlock();
             } else {
                 ESP_LOGW("UI", "Failed to acquire LVGL lock");
@@ -901,18 +691,11 @@ void udp_server_task(void *pvParameters) {
 }
 
 void app_main() {
- // Initialize chart data arrays
-    for (int i = 0; i < CHART_DATA_POINTS; i++) {
-        kw_data[i] = 0.0f;
-        soc_data[i] = 0.0f;
-    }
-    
-    // Create synchronization objects
-    chart_mutex = xSemaphoreCreateMutex();
+    // Create data queue for UI updates
     sensor_data_queue = xQueueCreate(20, sizeof(sensor_data_t)); // Increased from 10 to 20
     
-    if (chart_mutex == NULL || sensor_data_queue == NULL) {
-        ESP_LOGE("MAIN", "Failed to create synchronization objects");
+    if (sensor_data_queue == NULL) {
+        ESP_LOGE("MAIN", "Failed to create sensor data queue");
         return;
     }
     
@@ -948,7 +731,6 @@ void app_main() {
     // Lock the mutex due to the LVGL APIs are not thread-safe
     if (lvgl_port_lock(-1)) {
         ui_init();
-        initialize_chart_series();
         
         // Initialize default values with null checks
         if (ui_SOC != NULL) lv_label_set_text(ui_SOC, "0.0%");
