@@ -463,30 +463,33 @@ void process_received_data_with_consumption(float soc_in, float range, float tem
     ESP_LOGI("DATA", "Received data - SOC: %.1f%%, Range: %.1f km, Temp: %.1f°C, Amp: %.1f A, Volt: %.1f V, Watt: %.1f W, Speed: %.1f km/h", 
              soc_in, range, temp, amp, volt, watt, speed_kmh);
     
-    // Ignore speed values above 130 km/h
-    if (speed_kmh > 130.0f) {
-        ESP_LOGW("DATA", "Speed %.1f km/h ignored (above 130 km/h)", speed_kmh);
-        return;
+    // If speed is out of realistic range, do NOT abort the update —
+    // ignore speed for statistics/calculation but still update UI with other values.
+    bool speed_valid = (speed_kmh >= 0.0f && speed_kmh <= 130.0f);
+    if (!speed_valid) {
+        ESP_LOGW("DATA", "Speed %.1f km/h ignored for statistics (out of range)", speed_kmh);
     }
-    
+
     // Update global soc variable
     soc = soc_in;
-    
+
     // Convert watts to kW
     float power_kw = watt / 1000.0f;
-    
+
     // Get current time for trip statistics
     float current_time = (float)esp_timer_get_time() / 1000000.0f; // Convert to seconds
-    
-    // Update trip statistics
-    update_trip_statistics(power_kw, speed_kmh, current_time);
-    
-    // Calculate instantaneous consumption
-    float instantaneous_consumption = calculate_consumption(power_kw, speed_kmh);
-    
-    // Update rolling average
-    if (instantaneous_consumption > 0.0f) {
-        update_consumption_average(instantaneous_consumption);
+
+    // Update trip statistics and consumption only when speed is valid
+    if (speed_valid && speed_kmh > 1.0f) {
+        update_trip_statistics(power_kw, speed_kmh, current_time);
+
+        // Calculate instantaneous consumption
+        float instantaneous_consumption = calculate_consumption(power_kw, speed_kmh);
+
+        // Update rolling average
+        if (instantaneous_consumption > 0.0f) {
+            update_consumption_average(instantaneous_consumption);
+        }
     }
     
     // Create data structure
@@ -498,7 +501,8 @@ void process_received_data_with_consumption(float soc_in, float range, float tem
         .volt = volt,
         .watt = watt,
         .consumption = current_consumption,
-        .speed = speed_kmh
+        // store negative speed to indicate invalid/unavailable speed
+        .speed = speed_valid ? speed_kmh : -1.0f
     };
     
     // Send to queue (non-blocking)
