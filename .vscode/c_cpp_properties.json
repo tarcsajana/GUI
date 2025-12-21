@@ -1,0 +1,60 @@
+{
+    "configurations": [
+        {
+            "name": "ESP32-S3",
+            "compilerPath": "D:\\Code\\.espressif\\tools\\xtensa-esp-elf\\esp-14.2.0_20241119\\xtensa-esp-elf\\bin\\xtensa-esp32s3-elf-gcc.exe",
+            "cStandard": "gnu17",
+            "cppStandard": "gnu++17",
+            "intelliSenseMode": "gcc-x86",
+            "compileCommands": "${workspaceFolder}/build/compile_commands.json",
+            "includePath": [
+                "${workspaceFolder}",
+                "${workspaceFolder}/main",
+                "${workspaceFolder}/main/ui",
+                "${workspaceFolder}/components",
+                "${workspaceFolder}/components/lvgl__lvgl",
+                "${workspaceFolder}/components/lvgl__lvgl/src",
+                "${workspaceFolder}/components/espressif__esp_lcd_touch/include",
+                "${workspaceFolder}/components/espressif__esp_lcd_touch_gt911/include",
+                "${workspaceFolder}/build/config",
+                "D:/Code/v5.5.1/esp-idf/components/xtensa/esp32s3/include",
+                "D:/Code/v5.5.1/esp-idf/components/xtensa/include",
+                "D:/Code/v5.5.1/esp-idf/components/log/include",
+                "D:/Code/v5.5.1/esp-idf/components/esp_common/include",
+                "D:/Code/v5.5.1/esp-idf/components/esp_system/include",
+                "D:/Code/v5.5.1/esp-idf/components/esp_event/include",
+                "D:/Code/v5.5.1/esp-idf/components/esp_wifi/include",
+                "D:/Code/v5.5.1/esp-idf/components/esp_netif/include",
+                "D:/Code/v5.5.1/esp-idf/components/lwip/include",
+                "D:/Code/v5.5.1/esp-idf/components/lwip/include/apps",
+                "D:/Code/v5.5.1/esp-idf/components/lwip/include/apps/sntp",
+                "D:/Code/v5.5.1/esp-idf/components/freertos/config/include",
+                "D:/Code/v5.5.1/esp-idf/components/freertos/FreeRTOS-Kernel/include",
+                "D:/Code/v5.5.1/esp-idf/components/freertos/FreeRTOS-Kernel/portable/xtensa/include",
+                "D:/Code/v5.5.1/esp-idf/components/freertos/esp_additions/include",
+                "D:/Code/v5.5.1/esp-idf/components/nvs_flash/include",
+                "D:/Code/v5.5.1/esp-idf/components/esp_timer/include",
+                "D:/Code/v5.5.1/esp-idf/components/json/cJSON",
+                "D:/Code/v5.5.1/esp-idf/components/esp_hw_support/include",
+                "D:/Code/v5.5.1/esp-idf/components/soc/include",
+                "D:/Code/v5.5.1/esp-idf/components/hal/include",
+                "D:/Code/v5.5.1/esp-idf/components/esp_rom/include",
+                "D:/Code/v5.5.1/esp-idf/components/esp_lcd/include",
+                "D:/Code/v5.5.1/esp-idf/components/esp_lcd/rgb/include",
+                "D:/Code/v5.5.1/esp-idf/components/newlib/platform_include"
+            ],
+            "defines": [
+                "ESP_PLATFORM",
+                "IDFVER=\"v5.5.1\"",
+                "SOC_MMU_PAGE_SIZE=CONFIG_MMU_PAGE_SIZE",
+                "SOC_XTAL_FREQ_MHZ=CONFIG_XTAL_FREQ",
+                "_GLIBCXX_HAVE_POSIX_SEMAPHORE",
+                "_GLIBCXX_USE_POSIX_SEMAPHORE",
+                "_GNU_SOURCE",
+                "_POSIX_READER_WRITER_LOCKS",
+                "LV_CONF_INCLUDE_SIMPLE"
+            ]
+        }
+    ],
+    "version": 4
+}

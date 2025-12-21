@@ -22,8 +22,9 @@
 #include "esp_sntp.h"
 #include "esp_timer.h"
 
-// Function prototype for get_trip_statistics
+// Function prototypes
 void get_trip_statistics(float *total_energy, float *total_distance, float *avg_consumption);
+void send_heater_command(const char *command);
 
 // Global SOC variable for trip reset
 static float soc = 100.0f; // Initialize to 100%, will be updated with real data
@@ -32,6 +33,10 @@ static float soc = 100.0f; // Initialize to 100%, will be updated with real data
 // WiFi Configuration - Update these with your network credentials
 #define WIFI_SSID "HunorCar"
 #define WIFI_PASSWORD "Jucymucy8581"
+
+// Diesel Heater Control Configuration
+#define HEATER_UDP_PORT 4211
+#define HEATER_IP_ADDR "192.168.43.100"  // Update with your diesel heater ESP32-C3 IP
 
 #define NTP_SERVER "pool.ntp.org"
 #define TIMEZONE_OFFSET 1 * 3600 
@@ -533,6 +538,31 @@ void reset_trip_statistics(void) {
     last_timestamp = 0.0f;
     soc_start = soc; // soc is your current SOC value
     ESP_LOGI("TRIP", "Trip statistics reset");
+}
+
+// Function to send UDP commands to diesel heater
+void send_heater_command(const char *command) {
+    int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
+    if (sock < 0) {
+        ESP_LOGE("HEATER", "Failed to create UDP socket: errno %d", errno);
+        return;
+    }
+
+    struct sockaddr_in dest_addr;
+    dest_addr.sin_family = AF_INET;
+    dest_addr.sin_port = htons(HEATER_UDP_PORT);
+    inet_pton(AF_INET, HEATER_IP_ADDR, &dest_addr.sin_addr);
+
+    int err = sendto(sock, command, strlen(command), 0, 
+                     (struct sockaddr *)&dest_addr, sizeof(dest_addr));
+    
+    if (err < 0) {
+        ESP_LOGE("HEATER", "Failed to send UDP command '%s': errno %d", command, errno);
+    } else {
+        ESP_LOGI("HEATER", "Sent command '%s' to %s:%d", command, HEATER_IP_ADDR, HEATER_UDP_PORT);
+    }
+
+    close(sock);
 }
 
 static void event_handler(void* arg, esp_event_base_t event_base,
