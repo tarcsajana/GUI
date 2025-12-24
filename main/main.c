@@ -565,6 +565,109 @@ void send_heater_command(const char *command) {
     close(sock);
 }
 
+// Function to request and parse temperature data from heater
+typedef struct {
+    float air_temp;
+    float car_temp;
+} heater_temps_t;
+
+heater_temps_t request_heater_temperatures(void) {
+    heater_temps_t temps = {.air_temp = 0.0f, .car_temp = 0.0f};
+    
+    int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
+    if (sock < 0) {
+        ESP_LOGE("HEATER", "Failed to create UDP socket for temp request: errno %d", errno);
+        return temps;
+    }
+
+    // Set socket timeout
+    struct timeval tv;
+    tv.tv_sec = 2;  // 2 second timeout
+    tv.tv_usec = 0;
+    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+
+    struct sockaddr_in dest_addr;
+    dest_addr.sin_family = AF_INET;
+    dest_addr.sin_port = htons(HEATER_UDP_PORT);
+    inet_pton(AF_INET, HEATER_IP_ADDR, &dest_addr.sin_addr);
+
+    // Send request
+    const char *request = "temps";
+    int err = sendto(sock, request, strlen(request), 0, 
+                     (struct sockaddr *)&dest_addr, sizeof(dest_addr));
+    
+    if (err < 0) {
+        ESP_LOGE("HEATER", "Failed to send temp request: errno %d", errno);
+        close(sock);
+        return temps;
+    }
+
+    // Receive response
+    char rx_buffer[128];
+    struct sockaddr_in source_addr;
+    socklen_t socklen = sizeof(source_addr);
+    
+    int len = recvfrom(sock, rx_buffer, sizeof(rx_buffer) - 1, 0,
+                       (struct sockaddr *)&source_addr, &socklen);
+    
+    if (len > 0) {
+        rx_buffer[len] = 0;  // Null terminate
+        ESP_LOGI("HEATER", "Received temp response: %s", rx_buffer);
+        
+        // Parse JSON: {"air":X.X,"car":X.X}
+        // Simple parsing without full JSON library
+        char *air_ptr = strstr(rx_buffer, "\"air\":");
+        char *car_ptr = strstr(rx_buffer, "\"car\":");
+        
+        if (air_ptr && car_ptr) {
+            sscanf(air_ptr, "\"air\":%f", &temps.air_temp);
+            sscanf(car_ptr, "\"car\":%f", &temps.car_temp);
+            ESP_LOGI("HEATER", "Parsed temps - Air: %.1f°C, Car: %.1f°C", temps.air_temp, temps.car_temp);
+        } else {
+            ESP_LOGW("HEATER", "Failed to parse temperature JSON");
+        }
+    } else {
+        ESP_LOGW("HEATER", "No response from heater temp request");
+    }
+    
+    close(sock);
+    return temps;
+}
+
+// Task to periodically request and update heater temperatures
+void heater_temperature_task(void *pvParameters) {
+    const TickType_t xFrequency = pdMS_TO_TICKS(10000);  // Update every 10 seconds
+    TickType_t xLastWakeTime = xTaskGetTickCount();
+    
+    while (1) {
+        // Request temperatures from heater
+        heater_temps_t temps = request_heater_temperatures();
+        
+        // Update UI with LVGL lock
+        if (lvgl_port_lock(pdMS_TO_TICKS(100))) {
+            // Get the temperature labels from Screen2
+            extern lv_obj_t * ui_tempair;
+            extern lv_obj_t * ui_tempcar;
+            
+            if (ui_tempair != NULL) {
+                char temp_str[16];
+                snprintf(temp_str, sizeof(temp_str), "%.1f°C", temps.air_temp);
+                lv_label_set_text(ui_tempair, temp_str);
+            }
+            
+            if (ui_tempcar != NULL) {
+                char temp_str[16];
+                snprintf(temp_str, sizeof(temp_str), "%.1f°C", temps.car_temp);
+                lv_label_set_text(ui_tempcar, temp_str);
+            }
+            
+            lvgl_port_unlock();
+        }
+        
+        vTaskDelayUntil(&xLastWakeTime, xFrequency);
+    }
+}
+
 static void event_handler(void* arg, esp_event_base_t event_base,
                          int32_t event_id, void* event_data) {
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
@@ -758,6 +861,9 @@ void app_main() {
     
     // Start clock update task
     xTaskCreate(clock_update_task, "clock_update", 2048, NULL, 3, NULL);
+    
+    // Start heater temperature polling task
+    xTaskCreate(heater_temperature_task, "heater_temps", 4096, NULL, 3, NULL);
     
     ESP_LOGI("MAIN", "Application started successfully");
 

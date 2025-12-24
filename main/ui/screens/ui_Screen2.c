@@ -34,9 +34,6 @@ lv_obj_t * ui_Label26 = NULL;
 static bool heater_on = false;
 static int target_temperature = 20;  // Default target temperature in °C
 
-// External function to send UDP commands to diesel heater
-extern void send_heater_command(const char *command);
-
 // event funtions
 void ui_event_Button2(lv_event_t * e)
 {
