@@ -36,7 +36,7 @@ static float soc = 100.0f; // Initialize to 100%, will be updated with real data
 
 // Diesel Heater Control Configuration
 #define HEATER_UDP_PORT 4211
-#define HEATER_IP_ADDR "192.168.43.100"  // Update with your diesel heater ESP32-C3 IP
+#define HEATER_IP_ADDR "192.168.0.198"  // Update with your diesel heater ESP32-C3 IP
 
 #define NTP_SERVER "pool.ntp.org"
 #define TIMEZONE_OFFSET 1 * 3600 
