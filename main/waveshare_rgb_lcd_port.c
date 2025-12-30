@@ -215,36 +215,6 @@ esp_err_t wavesahre_rgb_lcd_bl_off()
     return ESP_OK;
 }
 
-/******************************* Set screen brightness **************************************/
-esp_err_t waveshare_rgb_lcd_set_brightness(uint8_t brightness)
-{
-    // Configure CH422G to output mode
-    uint8_t write_buf = 0x01;
-    i2c_master_write_to_device(I2C_MASTER_NUM, 0x24, &write_buf, 1, I2C_MASTER_TIMEOUT_MS / portTICK_PERIOD_MS);
-
-    // Map brightness (0-255) to CH422G control values
-    // The CH422G seems to use specific values for different brightness levels
-    // We'll use a simple mapping for now
-    uint8_t control_value;
-    
-    if (brightness == 0) {
-        control_value = 0x1A; // Off
-    } else if (brightness < 85) {
-        control_value = 0x1B; // Low brightness
-    } else if (brightness < 170) {
-        control_value = 0x1C; // Medium brightness  
-    } else {
-        control_value = 0x1E; // High brightness (full on)
-    }
-    
-    // Send brightness control command
-    write_buf = control_value;
-    i2c_master_write_to_device(I2C_MASTER_NUM, 0x38, &write_buf, 1, I2C_MASTER_TIMEOUT_MS / portTICK_PERIOD_MS);
-    
-    ESP_LOGI(TAG, "Backlight brightness set to %d (control: 0x%02X)", brightness, control_value);
-    return ESP_OK;
-}
-
 /******************************* Example code **************************************/
 static void draw_event_cb(lv_event_t *e) // Draw event callback function
 {

@@ -48,16 +48,6 @@ static bool time_synchronized = false;
 static char current_time_str[32] = "00:00:00";
 static char current_date_str[32] = "2024-01-01";
 
-// Brightness control
-#define BRIGHTNESS_DAY 255      // Full brightness during day
-#define BRIGHTNESS_NIGHT 80     // Dimmed brightness at night
-#define BRIGHTNESS_EVENING 150  // Medium brightness during evening
-#define DAY_START_HOUR 7        // 7:00 AM - start of day
-#define EVENING_START_HOUR 18   // 6:00 PM - start of evening
-#define NIGHT_START_HOUR 20     // 8:00 PM - start of night
-#define NIGHT_END_HOUR 6        // 6:00 AM - end of night
-static uint8_t current_brightness = BRIGHTNESS_DAY;
-static bool brightness_initialized = false;
 // Data queue for thread-safe communication
 typedef struct {
     float soc;
@@ -209,67 +199,15 @@ void update_time_strings(void)
     strftime(current_date_str, sizeof(current_date_str), "%Y-%m-%d", &timeinfo);
 }
 
-// Update brightness based on time of day
-void update_brightness_based_on_time(void)
-{
-    if (!time_synchronized) {
-        return; // Don't adjust brightness until time is synchronized
-    }
-    
-    time_t now;
-    struct tm timeinfo;
-    
-    time(&now);
-    localtime_r(&now, &timeinfo);
-    
-    uint8_t new_brightness = current_brightness;
-    int hour = timeinfo.tm_hour;
-    
-    // Determine brightness based on time
-    if (hour >= NIGHT_END_HOUR && hour < DAY_START_HOUR) {
-        // Early morning (6:00 AM - 7:00 AM) - evening brightness
-        new_brightness = BRIGHTNESS_EVENING;
-    } else if (hour >= DAY_START_HOUR && hour < EVENING_START_HOUR) {
-        // Day time (7:00 AM - 6:00 PM) - full brightness
-        new_brightness = BRIGHTNESS_DAY;
-    } else if (hour >= EVENING_START_HOUR && hour < NIGHT_START_HOUR) {
-        // Evening (6:00 PM - 8:00 PM) - medium brightness
-        new_brightness = BRIGHTNESS_EVENING;
-    } else {
-        // Night time (8:00 PM - 6:00 AM) - dim brightness
-        new_brightness = BRIGHTNESS_NIGHT;
-    }
-    
-    // Only update if brightness changed
-    if (new_brightness != current_brightness) {
-        current_brightness = new_brightness;
-        
-        // Apply brightness to the display
-        ESP_LOGI("BRIGHTNESS", "Setting brightness to %d (hour: %d)", current_brightness, hour);
-        
-        // Use the display driver's brightness control function
-        waveshare_rgb_lcd_set_brightness(current_brightness);
-    }
-}
-
 // Clock update task
 void clock_update_task(void *pvParameters)
 {
     TickType_t xLastWakeTime = xTaskGetTickCount();
     const TickType_t xFrequency = pdMS_TO_TICKS(1000); // Update every second
-    TickType_t lastBrightnessCheck = 0;
-    const TickType_t brightnessCheckInterval = pdMS_TO_TICKS(60000); // Check brightness every minute
     
     while (1) {
         if (time_synchronized) {
             update_time_strings();
-            
-            // Update brightness periodically (every minute)
-            TickType_t currentTime = xTaskGetTickCount();
-            if (currentTime - lastBrightnessCheck >= brightnessCheckInterval) {
-                update_brightness_based_on_time();
-                lastBrightnessCheck = currentTime;
-            }
             
             // Update UI with LVGL lock
             if (lvgl_port_lock(pdMS_TO_TICKS(100))) {
@@ -860,7 +798,7 @@ void app_main() {
     xTaskCreate(ui_update_task_with_consumption, "ui_update", 4096, NULL, 4, NULL);
     
     // Start clock update task
-    xTaskCreate(clock_update_task, "clock_update", 2048, NULL, 3, NULL);
+    xTaskCreate(clock_update_task, "clock_update", 4096, NULL, 3, NULL);
     
     // Start heater temperature polling task
     xTaskCreate(heater_temperature_task, "heater_temps", 4096, NULL, 3, NULL);
@@ -887,13 +825,4 @@ void app_main() {
         
         lvgl_port_unlock();
     }
-    
-    // Initialize brightness control
-    ESP_LOGI("BRIGHTNESS", "Initializing brightness control");
-    current_brightness = BRIGHTNESS_DAY; // Start with day brightness
-    brightness_initialized = true;
-    
-    // Set initial brightness (will be adjusted by time-based function once NTP syncs)
-    ESP_LOGI("BRIGHTNESS", "Initial brightness set to %d", current_brightness);
-    waveshare_rgb_lcd_set_brightness(current_brightness);
 }
