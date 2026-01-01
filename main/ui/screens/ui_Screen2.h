@@ -15,48 +15,28 @@ extern void ui_Screen2_screen_init(void);
 extern void ui_Screen2_screen_destroy(void);
 extern lv_obj_t * ui_Screen2;
 extern lv_obj_t * ui_Label3;
-extern lv_obj_t * ui_Button2;
-extern lv_obj_t * ui_Label5;
-extern lv_obj_t * ui_Button7;
-extern lv_obj_t * ui_Label6;
-extern lv_obj_t * ui_heatup;
-extern lv_obj_t * ui_heatdown;
-extern lv_obj_t * ui_Label7;
-extern lv_obj_t * ui_Label8;
-extern lv_obj_t * ui_Label9;
-extern lv_obj_t * ui_Label22;
-extern lv_obj_t * ui_tempair;
-extern lv_obj_t * ui_tempcar;
-extern lv_obj_t * ui_Label25;
-extern lv_obj_t * ui_Label26;
-
-// Heater control functions
-extern void get_heater_settings(bool *is_on, int *temp);
-extern void ui_event_Button2(lv_event_t * e);
-extern void ui_event_Button7(lv_event_t * e);
-extern void ui_event_heatup(lv_event_t * e);
-extern void ui_event_heatdown(lv_event_t * e);
-extern lv_obj_t * ui_Label3;
 extern void ui_event_Button2(lv_event_t * e);
 extern lv_obj_t * ui_Button2;
 extern lv_obj_t * ui_Label5;
 extern lv_obj_t * ui_Button7;
-extern lv_obj_t * ui_Label6;
 extern lv_obj_t * ui_heatup;
 extern lv_obj_t * ui_heatdown;
 extern lv_obj_t * ui_Label7;
-extern lv_obj_t * ui_Label8;
 extern lv_obj_t * ui_Label9;
 extern lv_obj_t * ui_Label22;
 extern lv_obj_t * ui_tempair;
 extern lv_obj_t * ui_tempcar;
-extern lv_obj_t * ui_Label25;
-extern lv_obj_t * ui_Label26;
+extern lv_obj_t * ui_car;
+extern lv_obj_t * ui_air;
+extern lv_obj_t * ui_Image3;
+extern lv_obj_t * ui_Image4;
 // CUSTOM VARIABLES
 extern lv_obj_t * uic_heatup;
 extern lv_obj_t * uic_heatdown;
 extern lv_obj_t * uic_tempair;
 extern lv_obj_t * uic_tempcar;
+extern lv_obj_t * uic_car;
+extern lv_obj_t * uic_air;
 
 #ifdef __cplusplus
 } /*extern "C"*/

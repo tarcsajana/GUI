@@ -35,21 +35,11 @@ lv_obj_t * ui_labelbattamps = NULL;
 lv_obj_t * ui_labelcelltemp = NULL;
 lv_obj_t * ui_labelvolt = NULL;
 lv_obj_t * ui_wifi = NULL;
-lv_obj_t * ui_Button5 = NULL;
 lv_obj_t * ui_Button4 = NULL;
 lv_obj_t * ui_Button1 = NULL;
 lv_obj_t * ui_Label16 = NULL;
 lv_obj_t * ui_Label14 = NULL;
 // event funtions
-void ui_event_battw(lv_event_t * e)
-{
-    lv_event_code_t event_code = lv_event_get_code(e);
-
-    if(event_code == LV_EVENT_CLICKED) {
-        _ui_screen_change(&ui_Screen2, LV_SCR_LOAD_ANIM_FADE_ON, 500, 0, &ui_Screen2_screen_init);
-    }
-}
-
 void ui_event_Button4(lv_event_t * e)
 {
     lv_event_code_t event_code = lv_event_get_code(e);
@@ -271,17 +261,6 @@ void ui_Livedata_screen_init(void)
     lv_obj_set_style_text_align(ui_wifi, LV_TEXT_ALIGN_LEFT, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_font(ui_wifi, &lv_font_montserrat_20, LV_PART_MAIN | LV_STATE_DEFAULT);
 
-    ui_Button5 = lv_btn_create(ui_Livedata);
-    lv_obj_set_width(ui_Button5, 143);
-    lv_obj_set_height(ui_Button5, 75);
-    lv_obj_set_x(ui_Button5, -205);
-    lv_obj_set_y(ui_Button5, 104);
-    lv_obj_set_align(ui_Button5, LV_ALIGN_CENTER);
-    lv_obj_add_flag(ui_Button5, LV_OBJ_FLAG_SCROLL_ON_FOCUS);     /// Flags
-    lv_obj_clear_flag(ui_Button5, LV_OBJ_FLAG_SCROLLABLE);      /// Flags
-    lv_obj_set_style_bg_color(ui_Button5, lv_color_hex(0x878686), LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_opa(ui_Button5, 200, LV_PART_MAIN | LV_STATE_DEFAULT);
-
     ui_Button4 = lv_btn_create(ui_Livedata);
     lv_obj_set_width(ui_Button4, 143);
     lv_obj_set_height(ui_Button4, 75);
@@ -296,8 +275,8 @@ void ui_Livedata_screen_init(void)
     ui_Button1 = lv_btn_create(ui_Livedata);
     lv_obj_set_width(ui_Button1, 143);
     lv_obj_set_height(ui_Button1, 75);
-    lv_obj_set_x(ui_Button1, -205);
-    lv_obj_set_y(ui_Button1, 10);
+    lv_obj_set_x(ui_Button1, -203);
+    lv_obj_set_y(ui_Button1, 86);
     lv_obj_set_align(ui_Button1, LV_ALIGN_CENTER);
     lv_obj_add_flag(ui_Button1, LV_OBJ_FLAG_SCROLL_ON_FOCUS);     /// Flags
     lv_obj_clear_flag(ui_Button1, LV_OBJ_FLAG_SCROLLABLE);      /// Flags
@@ -307,10 +286,10 @@ void ui_Livedata_screen_init(void)
     ui_Label16 = lv_label_create(ui_Livedata);
     lv_obj_set_width(ui_Label16, LV_SIZE_CONTENT);   /// 1
     lv_obj_set_height(ui_Label16, LV_SIZE_CONTENT);    /// 1
-    lv_obj_set_x(ui_Label16, -204);
-    lv_obj_set_y(ui_Label16, 13);
+    lv_obj_set_x(ui_Label16, -202);
+    lv_obj_set_y(ui_Label16, 85);
     lv_obj_set_align(ui_Label16, LV_ALIGN_CENTER);
-    lv_label_set_text(ui_Label16, "Graph");
+    lv_label_set_text(ui_Label16, "Heat");
     lv_obj_set_style_text_font(ui_Label16, &lv_font_montserrat_28, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     ui_Label14 = lv_label_create(ui_Livedata);
@@ -322,7 +301,6 @@ void ui_Livedata_screen_init(void)
     lv_label_set_text(ui_Label14, "Trip");
     lv_obj_set_style_text_font(ui_Label14, &lv_font_montserrat_26, LV_PART_MAIN | LV_STATE_DEFAULT);
 
-    lv_obj_add_event_cb(ui_battw, ui_event_battw, LV_EVENT_ALL, NULL);
     lv_obj_add_event_cb(ui_Button4, ui_event_Button4, LV_EVENT_ALL, NULL);
     lv_obj_add_event_cb(ui_Button1, ui_event_Button1, LV_EVENT_ALL, NULL);
     uic_Livedata = ui_Livedata;
@@ -376,7 +354,6 @@ void ui_Livedata_screen_destroy(void)
     ui_labelvolt = NULL;
     uic_wifi = NULL;
     ui_wifi = NULL;
-    ui_Button5 = NULL;
     ui_Button4 = NULL;
     ui_Button1 = NULL;
     ui_Label16 = NULL;

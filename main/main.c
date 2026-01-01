@@ -583,9 +583,11 @@ void heater_temperature_task(void *pvParameters) {
         
         // Update UI with LVGL lock
         if (lvgl_port_lock(pdMS_TO_TICKS(100))) {
-            // Get the temperature labels from Screen2
+            // Get the temperature labels and arcs from Screen2
             extern lv_obj_t * ui_tempair;
             extern lv_obj_t * ui_tempcar;
+            extern lv_obj_t * ui_air;
+            extern lv_obj_t * ui_car;
             
             if (ui_tempair != NULL) {
                 char temp_str[16];
@@ -597,6 +599,21 @@ void heater_temperature_task(void *pvParameters) {
                 char temp_str[16];
                 snprintf(temp_str, sizeof(temp_str), "%.1f°C", temps.car_temp);
                 lv_label_set_text(ui_tempcar, temp_str);
+            }
+            
+            // Update arc widgets with proper temperature ranges
+            if (ui_air != NULL) {
+                // Air temperature: -30°C to 230°C (range of 260 degrees)
+                int arc_value = (int)((temps.air_temp + 30) * 100 / 260);
+                arc_value = arc_value < 0 ? 0 : (arc_value > 100 ? 100 : arc_value);
+                lv_arc_set_value(ui_air, arc_value);
+            }
+            
+            if (ui_car != NULL) {
+                // Car temperature: -30°C to 50°C (range of 80 degrees)
+                int arc_value = (int)((temps.car_temp + 30) * 100 / 80);
+                arc_value = arc_value < 0 ? 0 : (arc_value > 100 ? 100 : arc_value);
+                lv_arc_set_value(ui_car, arc_value);
             }
             
             lvgl_port_unlock();

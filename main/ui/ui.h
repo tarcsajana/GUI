@@ -31,6 +31,10 @@ extern lv_obj_t * ui____initial_actions0;
 
 // IMAGES AND IMAGE SETS
 LV_IMG_DECLARE(ui_img_jo_png);    // assets/jo.png
+LV_IMG_DECLARE(
+    ui_img_111926670);    // assets/[CITYPNG.COM]Download Power On Off White Button Icon PNG - 600x600_resized.png
+LV_IMG_DECLARE(ui_img_plus_png);    // assets/plus.png
+LV_IMG_DECLARE(ui_img_minus_png);    // assets/minus.png
 
 // UI INIT
 void ui_init(void);
