@@ -91,6 +91,10 @@ static float current_consumption = 0.0f;  // kW/100km
 static bool consumption_initialized = false;
 static float soc_start = 100.0f; // Default to 100%, set on trip reset
 
+// UDS data timeout monitoring
+static uint64_t last_data_received_time = 0;  // Timestamp of last received data in milliseconds
+static const uint64_t DATA_TIMEOUT_MS = 20000;  // 20 seconds timeout
+
 // Add extern declaration for your consumption display UI element
 extern lv_obj_t * uic_consumption_label;  // You'll need to add this to your UI
 extern lv_obj_t * uic_avgconsumption;
@@ -229,6 +233,37 @@ void clock_update_task(void *pvParameters)
     }
 }
 
+// UDS Data timeout monitor task
+void uds_monitor_task(void *pvParameters)
+{
+    TickType_t xLastWakeTime = xTaskGetTickCount();
+    const TickType_t xFrequency = pdMS_TO_TICKS(500); // Check every 500ms
+    
+    while (1) {
+        uint64_t current_time_ms = esp_timer_get_time() / 1000;  // Convert to milliseconds
+        uint64_t time_since_last_data = current_time_ms - last_data_received_time;
+        
+        // Update UI with LVGL lock
+        if (lvgl_port_lock(pdMS_TO_TICKS(100))) {
+            if (ui_wifi != NULL) {
+                if (time_since_last_data > DATA_TIMEOUT_MS) {
+                    // No data received for more than 20 seconds - show UDS failure in red
+                    lv_label_set_text(ui_wifi, "UDS failure");
+                    lv_obj_set_style_text_color(ui_wifi, lv_color_hex(0xFF0000), LV_PART_MAIN | LV_STATE_DEFAULT);
+                    ESP_LOGW("UDS", "UDS data timeout - %.0f seconds since last data", (float)time_since_last_data / 1000.0f);
+                } else {
+                    // Data is being received - show Connected in normal color
+                    lv_label_set_text(ui_wifi, "Connected");
+                    lv_obj_set_style_text_color(ui_wifi, lv_color_hex(0xFFFFFF), LV_PART_MAIN | LV_STATE_DEFAULT);
+                }
+            }
+            lvgl_port_unlock();
+        }
+        
+        vTaskDelayUntil(&xLastWakeTime, xFrequency);
+    }
+}
+
 
 void ui_update_task_with_consumption(void *pvParameters) {
     sensor_data_t data;
@@ -355,10 +390,6 @@ void ui_update_task_with_consumption(void *pvParameters) {
                     volt_arc_value = (volt_arc_value < 0) ? 0 : (volt_arc_value > 370) ? 370 : volt_arc_value;
                     lv_arc_set_value(ui_volts, volt_arc_value);
                 }
-                
-                if (ui_wifi != NULL) {
-                    lv_label_set_text(ui_wifi, "Connected");
-                }
 
                 if (uic_consumption_label != NULL) {
                     char consumption_text[32];
@@ -405,6 +436,9 @@ void ui_update_task_with_consumption(void *pvParameters) {
 void process_received_data_with_consumption(float soc_in, float range, float temp, float amp, float volt, float watt, float speed_kmh) {
     ESP_LOGI("DATA", "Received data - SOC: %.1f%%, Range: %.1f km, Temp: %.1f°C, Amp: %.1f A, Volt: %.1f V, Watt: %.1f W, Speed: %.1f km/h", 
              soc_in, range, temp, amp, volt, watt, speed_kmh);
+    
+    // Update timestamp when data is received
+    last_data_received_time = esp_timer_get_time() / 1000;  // Convert to milliseconds
     
     // If speed is out of realistic range, do NOT abort the update —
     // ignore speed for statistics/calculation but still update UI with other values.
@@ -816,6 +850,9 @@ void app_main() {
     
     // Start clock update task
     xTaskCreate(clock_update_task, "clock_update", 4096, NULL, 3, NULL);
+    
+    // Start UDS data monitor task
+    xTaskCreate(uds_monitor_task, "uds_monitor", 4096, NULL, 3, NULL);
     
     // Start heater temperature polling task
     xTaskCreate(heater_temperature_task, "heater_temps", 4096, NULL, 3, NULL);
