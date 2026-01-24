@@ -6,9 +6,27 @@
 #include "ui.h"
 #include "esp_system.h" // <-- Add this at the top
 
+// Forward declaration for heater command function
+extern void send_heater_command(const char *command);
 
 void test(lv_event_t * e) {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
         esp_restart();
+    }
+}
+
+// Heat UP button event handler
+void ui_event_heatup(lv_event_t * e) {
+    lv_event_code_t event_code = lv_event_get_code(e);
+    if (event_code == LV_EVENT_CLICKED) {
+        send_heater_command("up");
+    }
+}
+
+// Heat DOWN button event handler
+void ui_event_heatdown(lv_event_t * e) {
+    lv_event_code_t event_code = lv_event_get_code(e);
+    if (event_code == LV_EVENT_CLICKED) {
+        send_heater_command("down");
     }
 }

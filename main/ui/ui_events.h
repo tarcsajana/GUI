@@ -11,6 +11,8 @@ extern "C" {
 #endif
 
 void test(lv_event_t * e);
+void ui_event_heatup(lv_event_t * e);
+void ui_event_heatdown(lv_event_t * e);
 
 #ifdef __cplusplus
 } /*extern "C"*/
