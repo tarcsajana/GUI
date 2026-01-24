@@ -36,7 +36,7 @@ static float soc = 100.0f; // Initialize to 100%, will be updated with real data
 
 // Diesel Heater Control Configuration
 #define HEATER_UDP_PORT 4211
-#define HEATER_IP_ADDR "192.168.0.198"  // Update with your diesel heater ESP32-C3 IP
+#define HEATER_IP_ADDR "192.168.1.102"  // Diesel_remote ESP32-C3 static IP
 
 #define NTP_SERVER "pool.ntp.org"
 #define TIMEZONE_OFFSET 1 * 3600 
@@ -649,7 +649,22 @@ void wifi_init_sta_with_ntp(void) {
     s_wifi_event_group = xEventGroupCreate();
 
     ESP_ERROR_CHECK(esp_netif_init());
-    esp_netif_create_default_wifi_sta();
+    esp_netif_t *sta_netif = esp_netif_create_default_wifi_sta();
+
+    // Configure static IP: 192.168.1.104
+    ESP_ERROR_CHECK(esp_netif_dhcpc_stop(sta_netif));
+    
+    esp_netif_ip_info_t ip_info;
+    IP4_ADDR(&ip_info.ip, 192, 168, 1, 104);
+    IP4_ADDR(&ip_info.gw, 192, 168, 1, 1);
+    IP4_ADDR(&ip_info.netmask, 255, 255, 255, 0);
+    ESP_ERROR_CHECK(esp_netif_set_ip_info(sta_netif, &ip_info));
+    
+    esp_netif_dns_info_t dns_info;
+    IP4_ADDR(&dns_info.ip.u_addr.ip4, 192, 168, 1, 1);
+    ESP_ERROR_CHECK(esp_netif_set_dns_info(sta_netif, ESP_NETIF_DNS_MAIN, &dns_info));
+    IP4_ADDR(&dns_info.ip.u_addr.ip4, 8, 8, 8, 8);
+    ESP_ERROR_CHECK(esp_netif_set_dns_info(sta_netif, ESP_NETIF_DNS_BACKUP, &dns_info));
 
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
