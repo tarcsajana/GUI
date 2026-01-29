@@ -36,7 +36,7 @@ static float soc = 100.0f; // Initialize to 100%, will be updated with real data
 
 // Diesel Heater Control Configuration
 #define HEATER_UDP_PORT 4211
-#define HEATER_IP_ADDR "192.168.1.102"  // Diesel_remote ESP32-C3 static IP
+#define HEATER_HOSTNAME "diesel-heater.local"  // mDNS hostname instead of static IP
 
 #define NTP_SERVER "pool.ntp.org"
 #define TIMEZONE_OFFSET 1 * 3600 
@@ -520,20 +520,35 @@ void send_heater_command(const char *command) {
         return;
     }
 
-    struct sockaddr_in dest_addr;
-    dest_addr.sin_family = AF_INET;
-    dest_addr.sin_port = htons(HEATER_UDP_PORT);
-    inet_pton(AF_INET, HEATER_IP_ADDR, &dest_addr.sin_addr);
+    // Resolve hostname to IP address
+    struct addrinfo hints, *res;
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_INET;
+    hints.ai_socktype = SOCK_DGRAM;
+    
+    char port_str[6];
+    snprintf(port_str, sizeof(port_str), "%d", HEATER_UDP_PORT);
+    
+    int err = getaddrinfo(HEATER_HOSTNAME, port_str, &hints, &res);
+    if (err != 0 || res == NULL) {
+        ESP_LOGE("HEATER", "Failed to resolve hostname '%s': %d", HEATER_HOSTNAME, err);
+        close(sock);
+        return;
+    }
 
-    int err = sendto(sock, command, strlen(command), 0, 
-                     (struct sockaddr *)&dest_addr, sizeof(dest_addr));
+    struct sockaddr_in *dest_addr = (struct sockaddr_in *)res->ai_addr;
+    ESP_LOGI("HEATER", "Resolved %s to %s", HEATER_HOSTNAME, inet_ntoa(dest_addr->sin_addr));
+
+    err = sendto(sock, command, strlen(command), 0, 
+                 (struct sockaddr *)dest_addr, sizeof(*dest_addr));
     
     if (err < 0) {
         ESP_LOGE("HEATER", "Failed to send UDP command '%s': errno %d", command, errno);
     } else {
-        ESP_LOGI("HEATER", "Sent command '%s' to %s:%d", command, HEATER_IP_ADDR, HEATER_UDP_PORT);
+        ESP_LOGI("HEATER", "Sent command '%s' to %s:%d", command, HEATER_HOSTNAME, HEATER_UDP_PORT);
     }
 
+    freeaddrinfo(res);
     close(sock);
 }
 
@@ -558,18 +573,32 @@ heater_temps_t request_heater_temperatures(void) {
     tv.tv_usec = 0;
     setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
-    struct sockaddr_in dest_addr;
-    dest_addr.sin_family = AF_INET;
-    dest_addr.sin_port = htons(HEATER_UDP_PORT);
-    inet_pton(AF_INET, HEATER_IP_ADDR, &dest_addr.sin_addr);
+    // Resolve hostname to IP address
+    struct addrinfo hints, *res;
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_INET;
+    hints.ai_socktype = SOCK_DGRAM;
+    
+    char port_str[6];
+    snprintf(port_str, sizeof(port_str), "%d", HEATER_UDP_PORT);
+    
+    int err = getaddrinfo(HEATER_HOSTNAME, port_str, &hints, &res);
+    if (err != 0 || res == NULL) {
+        ESP_LOGE("HEATER", "Failed to resolve hostname '%s': %d", HEATER_HOSTNAME, err);
+        close(sock);
+        return temps;
+    }
+
+    struct sockaddr_in *dest_addr = (struct sockaddr_in *)res->ai_addr;
 
     // Send request
     const char *request = "temps";
-    int err = sendto(sock, request, strlen(request), 0, 
-                     (struct sockaddr *)&dest_addr, sizeof(dest_addr));
+    err = sendto(sock, request, strlen(request), 0, 
+                 (struct sockaddr *)dest_addr, sizeof(*dest_addr));
     
     if (err < 0) {
         ESP_LOGE("HEATER", "Failed to send temp request: errno %d", errno);
+        freeaddrinfo(res);
         close(sock);
         return temps;
     }
@@ -602,6 +631,7 @@ heater_temps_t request_heater_temperatures(void) {
         ESP_LOGW("HEATER", "No response from heater temp request");
     }
     
+    freeaddrinfo(res);
     close(sock);
     return temps;
 }
