@@ -21,6 +21,7 @@
 #include <sys/time.h>
 #include "esp_sntp.h"
 #include "esp_timer.h"
+#include "mdns.h"
 
 // Function prototypes
 void get_trip_statistics(float *total_energy, float *total_distance, float *avg_consumption);
@@ -767,6 +768,10 @@ void wifi_init_sta_with_ntp(void) {
 
     if (bits & WIFI_CONNECTED_BIT) {
         ESP_LOGI("WIFI", "Connected to AP SSID:%s password:%s", WIFI_SSID, WIFI_PASSWORD);
+        
+        // Initialize mDNS for .local hostname resolution
+        ESP_ERROR_CHECK(mdns_init());
+        ESP_ERROR_CHECK(mdns_hostname_set("esp32"));
         
         // Initialize NTP after WiFi connection
         initialize_ntp();
