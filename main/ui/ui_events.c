@@ -30,3 +30,11 @@ void ui_event_heatdown(lv_event_t * e) {
         send_heater_command("down");
     }
 }
+
+// Power button event handler
+void ui_event_heatpower(lv_event_t * e) {
+    lv_event_code_t event_code = lv_event_get_code(e);
+    if (event_code == LV_EVENT_CLICKED) {
+        send_heater_command("power");
+    }
+}

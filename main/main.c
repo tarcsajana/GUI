@@ -166,7 +166,12 @@ void update_consumption_average(float instantaneous_consumption) {
 
 void time_sync_notification_cb(struct timeval *tv)
 {
-    ESP_LOGI("TIME", "Time synchronization complete");
+    time_t now = tv->tv_sec;
+    struct tm timeinfo;
+    localtime_r(&now, &timeinfo);
+    char strftime_buf[64];
+    strftime(strftime_buf, sizeof(strftime_buf), "%c", &timeinfo);
+    ESP_LOGI("TIME", "Time synchronization complete! Current time: %s", strftime_buf);
     time_synchronized = true;
 }
 
@@ -209,9 +214,22 @@ void clock_update_task(void *pvParameters)
 {
     TickType_t xLastWakeTime = xTaskGetTickCount();
     const TickType_t xFrequency = pdMS_TO_TICKS(1000); // Update every second
+    bool logged_sync_status = false;
+    int wait_count = 0;
     
     while (1) {
-        if (time_synchronized) {
+        // Check if time is set (even if not explicitly synchronized)
+        time_t now;
+        time(&now);
+        
+        // If time is reasonable (after year 2020), consider it valid
+        if (now > 1577836800) {  // Jan 1, 2020
+            if (!time_synchronized && wait_count > 10) {
+                // Force sync flag after 10 seconds if time seems valid
+                ESP_LOGI("TIME", "Time appears valid, forcing sync flag. Current timestamp: %ld", (long)now);
+                time_synchronized = true;
+            }
+            
             update_time_strings();
             
             // Update UI with LVGL lock
@@ -227,6 +245,26 @@ void clock_update_task(void *pvParameters)
                 }
                 
                 lvgl_port_unlock();
+            }
+            
+            if (!logged_sync_status) {
+                ESP_LOGI("TIME", "Clock display updated: %s %s", current_time_str, current_date_str);
+                logged_sync_status = true;
+            }
+        } else {
+            // Time not set yet, show waiting message
+            if (lvgl_port_lock(pdMS_TO_TICKS(100))) {
+                if (uic_clock_time != NULL) {
+                    lv_label_set_text(uic_clock_time, "--:--");
+                }
+                if (uic_clock_date != NULL) {
+                    lv_label_set_text(uic_clock_date, "Syncing...");
+                }
+                lvgl_port_unlock();
+            }
+            wait_count++;
+            if (wait_count % 5 == 0) {
+                ESP_LOGI("TIME", "Waiting for NTP sync... (%d seconds)", wait_count);
             }
         }
         

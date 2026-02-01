@@ -212,6 +212,7 @@ void ui_Screen2_screen_init(void)
     lv_obj_set_style_transform_zoom(ui_Image4, 80, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     lv_obj_add_event_cb(ui_Button2, ui_event_Button2, LV_EVENT_ALL, NULL);
+    lv_obj_add_event_cb(ui_Button7, ui_event_heatpower, LV_EVENT_ALL, NULL);
     lv_obj_add_event_cb(ui_heatup, ui_event_heatup, LV_EVENT_ALL, NULL);
     lv_obj_add_event_cb(ui_heatdown, ui_event_heatdown, LV_EVENT_ALL, NULL);
     uic_heatup = ui_heatup;
