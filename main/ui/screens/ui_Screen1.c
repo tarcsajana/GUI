@@ -69,6 +69,7 @@ void ui_Screen1_screen_init(void)
     lv_obj_set_style_shadow_color(ui_uiclocktime, lv_color_hex(0x000000), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_shadow_opa(ui_uiclocktime, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_transform_zoom(ui_uiclocktime, 512, LV_PART_MAIN | LV_STATE_DEFAULT);
+    uic_clock_time = ui_uiclocktime;  // wire to extern pointer used by clock task
 
     ui_clockdate = lv_label_create(ui_Screen1);
     lv_obj_set_width(ui_clockdate, LV_SIZE_CONTENT);   /// 1
@@ -79,6 +80,7 @@ void ui_Screen1_screen_init(void)
     lv_label_set_text(ui_clockdate, "0000-00-00");
     lv_obj_set_style_text_align(ui_clockdate, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_font(ui_clockdate, &lv_font_montserrat_38, LV_PART_MAIN | LV_STATE_DEFAULT);
+    uic_clock_date = ui_clockdate;  // wire to extern pointer used by clock task
 
     ui_Consumption = lv_label_create(ui_Screen1);
     lv_obj_set_width(ui_Consumption, LV_SIZE_CONTENT);   /// 1

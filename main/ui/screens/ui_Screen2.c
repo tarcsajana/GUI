@@ -222,6 +222,26 @@ void ui_Screen2_screen_init(void)
     uic_car = ui_car;
     uic_air = ui_air;
 
+    // --- SUMMER MODE overlay ---
+    // Semi-transparent gray panel covering the whole screen
+    lv_obj_t * summer_overlay = lv_obj_create(ui_Screen2);
+    lv_obj_set_size(summer_overlay, LV_PCT(100), LV_PCT(100));
+    lv_obj_set_pos(summer_overlay, 0, 0);
+    lv_obj_set_style_bg_color(summer_overlay, lv_color_hex(0x303030), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_opa(summer_overlay, 210, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_border_width(summer_overlay, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_radius(summer_overlay, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_clear_flag(summer_overlay, LV_OBJ_FLAG_SCROLLABLE);
+
+    // "SUMMER MODE" label centred on the overlay
+    lv_obj_t * summer_label = lv_label_create(summer_overlay);
+    lv_label_set_text(summer_label, "SUMMER MODE");
+    lv_obj_set_align(summer_label, LV_ALIGN_CENTER);
+    lv_obj_set_style_text_font(summer_label, &lv_font_montserrat_48, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_color(summer_label, lv_color_hex(0xFFFFFF), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_opa(summer_label, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
+    // -- end SUMMER MODE overlay --
+
 }
 
 void ui_Screen2_screen_destroy(void)

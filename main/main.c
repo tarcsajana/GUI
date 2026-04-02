@@ -286,8 +286,8 @@ void uds_monitor_task(void *pvParameters)
         if (lvgl_port_lock(pdMS_TO_TICKS(100))) {
             if (ui_wifi != NULL) {
                 if (time_since_last_data > DATA_TIMEOUT_MS) {
-                    // No data received for more than 20 seconds - show UDS failure in red
-                    lv_label_set_text(ui_wifi, "UDS failure");
+                    // No data received for more than 20 seconds - show UDP failure in red
+                    lv_label_set_text(ui_wifi, "UDP failure");
                     lv_obj_set_style_text_color(ui_wifi, lv_color_hex(0xFF0000), LV_PART_MAIN | LV_STATE_DEFAULT);
                     ESP_LOGW("UDS", "UDS data timeout - %.0f seconds since last data", (float)time_since_last_data / 1000.0f);
                 } else {
@@ -306,97 +306,115 @@ void uds_monitor_task(void *pvParameters)
 
 void ui_update_task_with_consumption(void *pvParameters) {
     sensor_data_t data;
+    sensor_data_t disp = {0};   // smoothed display values
+    bool has_data = false;
+
+    // Smoothing factors: 0 = frozen, 1 = instant snap
+    // Fast signals (watt/amp/speed) feel live at 0.3; slow at 0.1
+    const float ALPHA_FAST = 0.30f;
+    const float ALPHA_SLOW = 0.10f;
+
+    TickType_t xLastWakeTime = xTaskGetTickCount();
+    const TickType_t xFrequency = pdMS_TO_TICKS(50); // 20 Hz render loop
 
     while (1) {
-        // Wait for data from queue
-        if (xQueueReceive(sensor_data_queue, &data, portMAX_DELAY) == pdTRUE) {
-            ESP_LOGI("UI", "Updating UI with received data");
+        // Non-blocking: grab latest packet if one arrived since last frame
+        if (xQueueReceive(sensor_data_queue, &data, 0) == pdTRUE) {
+            if (!has_data) {
+                disp = data; // first packet: snap all values immediately
+                has_data = true;
+            } else {
+                // Smooth fast signals
+                disp.watt  += ALPHA_FAST * (data.watt  - disp.watt);
+                disp.amp   += ALPHA_FAST * (data.amp   - disp.amp);
+                disp.speed += ALPHA_FAST * (data.speed - disp.speed);
+                // Smooth slower signals
+                disp.volt  += ALPHA_SLOW * (data.volt  - disp.volt);
+                disp.temp  += ALPHA_SLOW * (data.temp  - disp.temp);
+                // Discrete / non-continuous values: always use latest
+                disp.soc         = data.soc;
+                disp.range       = data.range;
+                disp.consumption = data.consumption;
+            }
+        }
+
+        // Skip rendering until first data arrives
+        if (!has_data) {
+            vTaskDelayUntil(&xLastWakeTime, xFrequency);
+            continue;
+        }
+
+        // Alias for readability below
+        sensor_data_t d = disp;
+        {
+            bool _dummy = true; (void)_dummy; // keeps block scoping clean
             
             // Convert watts to kW
-            float watt_kw = data.watt / 1000.0f;
-            
+            float watt_kw = d.watt / 1000.0f;
+
             // Update UI elements - must be done with LVGL lock
-            if (lvgl_port_lock(pdMS_TO_TICKS(100))) {
+            if (lvgl_port_lock(pdMS_TO_TICKS(40))) {
                 // Validate UI objects before using them
                         if (ui_SOC != NULL) {
                             char soc_text[16];
-                            snprintf(soc_text, sizeof(soc_text), "%.1f%%", data.soc);
-                            lv_label_set_text(ui_SOC, soc_text);
+                            snprintf(soc_text, sizeof(soc_text), "%.1f%%", d.soc);
                         }
                     
                         
                         if (ui_SOCbar != NULL) {
-                        int soc_val = (int)data.soc;
+                        int soc_val = (int)d.soc;
                         soc_val = (soc_val < 0) ? 0 : (soc_val > 100) ? 100 : soc_val;
                         lv_bar_set_value(ui_SOCbar, soc_val, LV_ANIM_ON);
 
-                        // Set color based on SOC range
                         lv_color_t bar_color;
-
-                    if (soc_val <= 10) {
-                        bar_color = lv_color_hex(0xFF0000); // Red
-                    } else if (soc_val <= 25) {
-                        bar_color = lv_color_hex(0xFFA500); // Orange
-                    } else if (soc_val > 90) {
-                        bar_color = lv_color_hex(0x00FF00); // Green
-                    } else {
-                        bar_color = lv_color_hex(0x3366CC); // Default/original color (adjust if needed)
-                    }
-
-                    lv_obj_set_style_bg_color(ui_SOCbar, bar_color, LV_PART_INDICATOR | LV_STATE_DEFAULT);
+                        if (soc_val <= 10)       bar_color = lv_color_hex(0xFF0000);
+                        else if (soc_val <= 25)  bar_color = lv_color_hex(0xFFA500);
+                        else if (soc_val > 90)   bar_color = lv_color_hex(0x00FF00);
+                        else                     bar_color = lv_color_hex(0x3366CC);
+                        lv_obj_set_style_bg_color(ui_SOCbar, bar_color, LV_PART_INDICATOR | LV_STATE_DEFAULT);
                 }
-                
+
                 if (ui_Range != NULL) {
                     char range_text[16];
-                    snprintf(range_text, sizeof(range_text), "%.1f km", data.range);
+                    snprintf(range_text, sizeof(range_text), "%.1f km", d.range);
                     lv_label_set_text(ui_Range, range_text);
                 }
-                
+
                 if (ui_labelbattw != NULL) {
                     char watt_text[16];
                     snprintf(watt_text, sizeof(watt_text), "%.1fkw", watt_kw);
                     lv_label_set_text(ui_labelbattw, watt_text);
                 }
-                
-                
+
                 if (ui_battw != NULL) {
-                    // Clamp watt value between -60,000 and +42,000 W
-                    float clamped_watt = (data.watt < -60000.0f) ? -60000.0f : (data.watt > 42000.0f) ? 42000.0f : data.watt;
-
-                    // Update arc value directly using LVGL's arc value range (-60 to +42 kW)
-                    int arc_value = (int)(clamped_watt / 1000.0f);  // From watts to kW
+                    float clamped_watt = (d.watt < -60000.0f) ? -60000.0f : (d.watt > 42000.0f) ? 42000.0f : d.watt;
+                    int arc_value = (int)(clamped_watt / 1000.0f);
                     lv_arc_set_value(ui_battw, arc_value);
-
-                    // Set color based on sign
-                    if (arc_value >= 0) {
-                        lv_obj_set_style_arc_color(ui_battw, lv_color_hex(0x00FF00), LV_PART_INDICATOR | LV_STATE_DEFAULT); // Green
-                    } else {
-                        lv_obj_set_style_arc_color(ui_battw, lv_color_hex(0xFF0000), LV_PART_INDICATOR | LV_STATE_DEFAULT); // Red
-                    }
+                    lv_obj_set_style_arc_color(ui_battw,
+                        arc_value >= 0 ? lv_color_hex(0x00FF00) : lv_color_hex(0xFF0000),
+                        LV_PART_INDICATOR | LV_STATE_DEFAULT);
                 }
-                
+
                 if (ui_labelbattamps != NULL) {
                     char amp_text[16];
-                    snprintf(amp_text, sizeof(amp_text), "%.1fA", data.amp);
+                    snprintf(amp_text, sizeof(amp_text), "%.1fA", d.amp);
                     lv_label_set_text(ui_labelbattamps, amp_text);
                 }
-                
+
                 if (ui_battamps != NULL) {
-                    // Update arc value for amps (-150A to +150A range)
-                    int amp_arc_value = (int)data.amp;
+                    int amp_arc_value = (int)d.amp;
                     amp_arc_value = (amp_arc_value < 0) ? 0 : (amp_arc_value > 100) ? 100 : amp_arc_value;
                     lv_arc_set_value(ui_battamps, amp_arc_value);
                 }
-                
+
                 if (ui_labelcelltemp != NULL) {
                     char temp_text[16];
-                    snprintf(temp_text, sizeof(temp_text), "%.1f°C", data.temp);
+                    snprintf(temp_text, sizeof(temp_text), "%.1f°C", d.temp);
                     lv_label_set_text(ui_labelcelltemp, temp_text);
                 }
-                
+
                 if (ui_celltemp != NULL) {
-                    // Clamp temperature to safe display range
-                    int temp_arc_value = (int)data.temp;
+                    int temp_arc_value = (int)d.temp;
                     temp_arc_value = (temp_arc_value < -10) ? -10 : (temp_arc_value > 100) ? 100 : temp_arc_value;
 
                     // Set arc value (e.g., shift -10 to 0 range into 0–100 for arc if needed)
@@ -419,13 +437,12 @@ void ui_update_task_with_consumption(void *pvParameters) {
                                 
                 if (ui_labelvolt != NULL) {
                     char volt_text[16];
-                    snprintf(volt_text, sizeof(volt_text), "%.1f", data.volt);
+                    snprintf(volt_text, sizeof(volt_text), "%.1f", d.volt);
                     lv_label_set_text(ui_labelvolt, volt_text);
                 }
-                
+
                 if (ui_volts != NULL) {
-                    // Update arc value for voltage (0V to 370V range)
-                    int volt_arc_value = (int)data.volt;
+                    int volt_arc_value = (int)d.volt;
                     volt_arc_value = (volt_arc_value < 0) ? 0 : (volt_arc_value > 370) ? 370 : volt_arc_value;
                     lv_arc_set_value(ui_volts, volt_arc_value);
                 }
@@ -467,13 +484,15 @@ void ui_update_task_with_consumption(void *pvParameters) {
             } else {
                 ESP_LOGW("UI", "Failed to acquire LVGL lock");
             }
-        }
+        } // end inner block
+
+        vTaskDelayUntil(&xLastWakeTime, xFrequency);
     }
 }
 
 // Enhanced process_received_data function with trip statistics
 void process_received_data_with_consumption(float soc_in, float range, float temp, float amp, float volt, float watt, float speed_kmh) {
-    ESP_LOGI("DATA", "Received data - SOC: %.1f%%, Range: %.1f km, Temp: %.1f°C, Amp: %.1f A, Volt: %.1f V, Watt: %.1f W, Speed: %.1f km/h", 
+    ESP_LOGD("DATA", "SOC:%.1f Rng:%.1f T:%.1f A:%.1f V:%.1f W:%.1f Spd:%.1f",
              soc_in, range, temp, amp, volt, watt, speed_kmh);
     
     // Update timestamp when data is received
@@ -521,11 +540,9 @@ void process_received_data_with_consumption(float soc_in, float range, float tem
         .speed = speed_valid ? speed_kmh : -1.0f
     };
     
-    // Send to queue (non-blocking)
+    // Always overwrite with latest data (never blocks, never drops newest)
     if (sensor_data_queue != NULL) {
-        if (xQueueSend(sensor_data_queue, &data, 0) != pdTRUE) {
-            ESP_LOGW("DATA", "Failed to queue sensor data");
-        }
+        xQueueOverwrite(sensor_data_queue, &data);
     }
 }
 
@@ -826,7 +843,7 @@ void wifi_init_sta_with_ntp(void) {
 }
 
 void udp_server_task(void *pvParameters) {
-    char rx_buffer[128];
+    char rx_buffer[256];
     struct sockaddr_in dest_addr;
     dest_addr.sin_addr.s_addr = htonl(INADDR_ANY);
     dest_addr.sin_family = AF_INET;
@@ -857,43 +874,51 @@ void udp_server_task(void *pvParameters) {
 
         if (len > 0) {
             rx_buffer[len] = 0; // Null-terminate
-            ESP_LOGI("UDP", "Received %d bytes from %s:%d", len, 
-                     inet_ntoa(source_addr.sin_addr), ntohs(source_addr.sin_port));
-            
+            ESP_LOGD("UDP", "Received %d bytes", len);
+
             cJSON *json = cJSON_Parse(rx_buffer);
             if (json) {
-                cJSON *soc_item = cJSON_GetObjectItem(json, "soc");
+                // Sequence number tracking — drop out-of-order packets
+                static uint32_t last_seq = 0;
+                cJSON *seq_item = cJSON_GetObjectItem(json, "seq");
+                if (cJSON_IsNumber(seq_item)) {
+                    uint32_t pkt_seq = (uint32_t)seq_item->valuedouble;
+                    if (pkt_seq < last_seq && (last_seq - pkt_seq) < 1000) {
+                        // Old/duplicate packet, discard
+                        ESP_LOGD("UDP", "Dropped old packet seq=%lu (last=%lu)", (unsigned long)pkt_seq, (unsigned long)last_seq);
+                        cJSON_Delete(json);
+                        continue;
+                    }
+                    last_seq = pkt_seq;
+                }
+
+                cJSON *soc_item   = cJSON_GetObjectItem(json, "soc");
                 cJSON *range_item = cJSON_GetObjectItem(json, "range");
-                cJSON *temp_item = cJSON_GetObjectItem(json, "celltemp");
+                cJSON *temp_item  = cJSON_GetObjectItem(json, "celltemp");
                 cJSON *battA_item = cJSON_GetObjectItem(json, "battA");
                 cJSON *battV_item = cJSON_GetObjectItem(json, "battV");
                 cJSON *battW_item = cJSON_GetObjectItem(json, "battW");
-                cJSON *speed_item = cJSON_GetObjectItem(json, "speed_kmh");  // Changed from "speed" to "speed_kmh"
+                cJSON *speed_item = cJSON_GetObjectItem(json, "speed_kmh");
 
-                // Check if all required fields exist and are numbers
-                if (cJSON_IsNumber(soc_item) && cJSON_IsNumber(range_item) && 
-                    cJSON_IsNumber(temp_item) && cJSON_IsNumber(battA_item) && 
+                if (cJSON_IsNumber(soc_item) && cJSON_IsNumber(range_item) &&
+                    cJSON_IsNumber(temp_item) && cJSON_IsNumber(battA_item) &&
                     cJSON_IsNumber(battV_item) && cJSON_IsNumber(battW_item)) {
-                    
-                    float soc = (float)soc_item->valuedouble;
-                    float range = (float)range_item->valuedouble;
-                    float temp = (float)temp_item->valuedouble;
-                    float battA = (float)battA_item->valuedouble;
-                    float battV = (float)battV_item->valuedouble;
-                    float battW = (float)battW_item->valuedouble;
-                    float speed = 0.0f;
 
-                    // Use speed if available, otherwise calculate from range changes
-                    if (cJSON_IsNumber(speed_item)) {
-                        speed = (float)speed_item->valuedouble;
-                    }
-                     process_received_data_with_consumption(soc, range, temp, battA, battV, battW, speed);
+                    float speed = cJSON_IsNumber(speed_item) ? (float)speed_item->valuedouble : 0.0f;
+                    process_received_data_with_consumption(
+                        (float)soc_item->valuedouble,
+                        (float)range_item->valuedouble,
+                        (float)temp_item->valuedouble,
+                        (float)battA_item->valuedouble,
+                        (float)battV_item->valuedouble,
+                        (float)battW_item->valuedouble,
+                        speed);
                 } else {
-                    ESP_LOGW("UDP", "JSON missing required fields or invalid types");
+                    ESP_LOGW("UDP", "JSON missing required fields");
                 }
                 cJSON_Delete(json);
             } else {
-                ESP_LOGW("UDP", "Failed to parse JSON: %s", rx_buffer);
+                ESP_LOGW("UDP", "Failed to parse JSON");
             }
         } else if (len < 0) {
             ESP_LOGE("UDP", "recvfrom failed: errno %d", errno);
@@ -906,7 +931,7 @@ void udp_server_task(void *pvParameters) {
 
 void app_main() {
     // Create data queue for UI updates
-    sensor_data_queue = xQueueCreate(20, sizeof(sensor_data_t)); // Increased from 10 to 20
+    sensor_data_queue = xQueueCreate(1, sizeof(sensor_data_t)); // Size 1: always hold only latest
     
     if (sensor_data_queue == NULL) {
         ESP_LOGE("MAIN", "Failed to create sensor data queue");
