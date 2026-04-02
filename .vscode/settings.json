@@ -13,5 +13,6 @@
     "--query-driver=d:\\Code\\.espressif\\tools\\xtensa-esp-elf\\esp-14.2.0_20241119\\xtensa-esp-elf\\bin\\xtensa-esp32s3-elf-gcc.exe",
     "--compile-commands-dir=d:\\Code\\GUI\\build"
   ],
-  "C_Cpp.default.compilerPath": "cl.exe"
+  "C_Cpp.default.compilerPath": "cl.exe",
+  "idf.currentSetup": "d:\\Code\\v5.5.1\\esp-idf"
 }
