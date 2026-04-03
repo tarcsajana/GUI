@@ -11,3 +11,6 @@ dependencies:
   mdns:
     version: "^1"
 
+  espressif/cjson:
+    version: "^1"
+
