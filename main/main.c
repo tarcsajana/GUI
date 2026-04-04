@@ -52,6 +52,7 @@ static bool time_synchronized = false;
 static char current_time_str[32] = "00:00:00";
 static char current_date_str[32] = "2024-01-01";
 
+<<<<<<< HEAD
 static void configure_app_logging(void)
 {
 #if APP_DEBUG_LOGS
@@ -92,6 +93,14 @@ static void refresh_clock_labels_locked(void)
     if (uic_clock_date != NULL) {
         lv_label_set_text(uic_clock_date, current_date_str);
     }
+=======
+static bool has_valid_system_time(void)
+{
+    time_t now = 0;
+    time(&now);
+    // 2024-01-01 00:00:00 UTC
+    return now >= 1704067200;
+>>>>>>> eb09978045c5fc6c81edabfac4185df3cae46989
 }
 
 // Data queue for thread-safe communication
@@ -140,6 +149,70 @@ static float soc_start = 100.0f; // Default to 100%, set on trip reset
 // UDS data timeout monitoring
 static uint64_t last_data_received_time = 0;  // Timestamp of last received data in milliseconds
 static const uint64_t DATA_TIMEOUT_MS = 20000;  // 20 seconds timeout
+
+#define POWER_ANIM_DURATION_MS 220
+
+static int32_t battw_arc_last = 0;
+static int32_t battw_label_last_tenths = 0;
+
+static void battw_arc_anim_exec_cb(void *obj, int32_t v)
+{
+    if (obj != NULL) {
+        lv_arc_set_value((lv_obj_t *)obj, (int)v);
+    }
+}
+
+static void battw_label_anim_exec_cb(void *obj, int32_t v)
+{
+    if (obj != NULL) {
+        char watt_text[16];
+        snprintf(watt_text, sizeof(watt_text), "%.1fkw", ((float)v) / 10.0f);
+        lv_label_set_text((lv_obj_t *)obj, watt_text);
+    }
+}
+
+static void update_power_display_animated(float watt)
+{
+    float clamped_watt = (watt < -60000.0f) ? -60000.0f : (watt > 42000.0f) ? 42000.0f : watt;
+    float kw = clamped_watt / 1000.0f;
+    int32_t target_arc = (int32_t)kw;
+    int32_t target_label_tenths = (int32_t)(kw * 10.0f);
+
+    if (ui_battw != NULL) {
+        lv_anim_del(ui_battw, battw_arc_anim_exec_cb);
+
+        lv_anim_t a;
+        lv_anim_init(&a);
+        lv_anim_set_var(&a, ui_battw);
+        lv_anim_set_exec_cb(&a, battw_arc_anim_exec_cb);
+        lv_anim_set_values(&a, battw_arc_last, target_arc);
+        lv_anim_set_time(&a, POWER_ANIM_DURATION_MS);
+        lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+        lv_anim_start(&a);
+
+        if (target_arc >= 0) {
+            lv_obj_set_style_arc_color(ui_battw, lv_color_hex(0x00FF00), LV_PART_INDICATOR | LV_STATE_DEFAULT);
+        } else {
+            lv_obj_set_style_arc_color(ui_battw, lv_color_hex(0xFF0000), LV_PART_INDICATOR | LV_STATE_DEFAULT);
+        }
+    }
+
+    if (ui_labelbattw != NULL) {
+        lv_anim_del(ui_labelbattw, battw_label_anim_exec_cb);
+
+        lv_anim_t a;
+        lv_anim_init(&a);
+        lv_anim_set_var(&a, ui_labelbattw);
+        lv_anim_set_exec_cb(&a, battw_label_anim_exec_cb);
+        lv_anim_set_values(&a, battw_label_last_tenths, target_label_tenths);
+        lv_anim_set_time(&a, POWER_ANIM_DURATION_MS);
+        lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+        lv_anim_start(&a);
+    }
+
+    battw_arc_last = target_arc;
+    battw_label_last_tenths = target_label_tenths;
+}
 
 // Add extern declaration for your consumption display UI element
 extern lv_obj_t * uic_consumption_label;  // You'll need to add this to your UI
@@ -264,12 +337,43 @@ void clock_update_task(void *pvParameters)
     const TickType_t xFrequency = pdMS_TO_TICKS(1000); // Update every second
     
     while (1) {
+<<<<<<< HEAD
         update_time_strings();
 
         // Update UI with LVGL lock
         if (lvgl_port_lock(pdMS_TO_TICKS(100))) {
             refresh_clock_labels_locked();
             lvgl_port_unlock();
+=======
+        if (has_valid_system_time()) {
+            time_synchronized = true;
+            update_time_strings();
+            
+            // Update UI with LVGL lock
+            if (lvgl_port_lock(pdMS_TO_TICKS(100))) {
+                // Update time display
+                if (uic_clock_time != NULL) {
+                    lv_label_set_text(uic_clock_time, current_time_str);
+                }
+                
+                // Update date display
+                if (uic_clock_date != NULL) {
+                    lv_label_set_text(uic_clock_date, current_date_str);
+                }
+                
+                lvgl_port_unlock();
+            }
+        } else {
+            if (lvgl_port_lock(pdMS_TO_TICKS(100))) {
+                if (uic_clock_time != NULL) {
+                    lv_label_set_text(uic_clock_time, "Syncing...");
+                }
+                if (uic_clock_date != NULL) {
+                    lv_label_set_text(uic_clock_date, "----/--/--");
+                }
+                lvgl_port_unlock();
+            }
+>>>>>>> eb09978045c5fc6c81edabfac4185df3cae46989
         }
         
         vTaskDelayUntil(&xLastWakeTime, xFrequency);
@@ -356,28 +460,7 @@ void ui_update_task_with_consumption(void *pvParameters) {
                     lv_label_set_text(ui_Range, range_text);
                 }
                 
-                if (ui_labelbattw != NULL) {
-                    char watt_text[16];
-                    snprintf(watt_text, sizeof(watt_text), "%.1fkw", watt_kw);
-                    lv_label_set_text(ui_labelbattw, watt_text);
-                }
-                
-                
-                if (ui_battw != NULL) {
-                    // Clamp watt value between -60,000 and +42,000 W
-                    float clamped_watt = (data.watt < -60000.0f) ? -60000.0f : (data.watt > 42000.0f) ? 42000.0f : data.watt;
-
-                    // Update arc value directly using LVGL's arc value range (-60 to +42 kW)
-                    int arc_value = (int)(clamped_watt / 1000.0f);  // From watts to kW
-                    lv_arc_set_value(ui_battw, arc_value);
-
-                    // Set color based on sign
-                    if (arc_value >= 0) {
-                        lv_obj_set_style_arc_color(ui_battw, lv_color_hex(0x00FF00), LV_PART_INDICATOR | LV_STATE_DEFAULT); // Green
-                    } else {
-                        lv_obj_set_style_arc_color(ui_battw, lv_color_hex(0xFF0000), LV_PART_INDICATOR | LV_STATE_DEFAULT); // Red
-                    }
-                }
+                update_power_display_animated(data.watt);
                 
                 if (ui_labelbattamps != NULL) {
                     char amp_text[16];
@@ -966,6 +1049,16 @@ void app_main() {
         if (ui_labelcelltemp != NULL) lv_label_set_text(ui_labelcelltemp, "0.0°C");
         if (ui_labelvolt != NULL) lv_label_set_text(ui_labelvolt, "0.0");
         if (ui_wifi != NULL) lv_label_set_text(ui_wifi, "Connecting...");
+
+        if (ui_battw != NULL) {
+            // Center-zero behavior: positive and negative kW move in opposite directions.
+            lv_arc_set_range(ui_battw, -60, 60);
+            lv_arc_set_mode(ui_battw, LV_ARC_MODE_SYMMETRICAL);
+            lv_arc_set_value(ui_battw, 0);
+        }
+
+        battw_arc_last = 0;
+        battw_label_last_tenths = 0;
         
         update_time_strings();
         refresh_clock_labels_locked();
