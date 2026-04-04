@@ -52,7 +52,6 @@ static bool time_synchronized = false;
 static char current_time_str[32] = "00:00:00";
 static char current_date_str[32] = "2024-01-01";
 
-<<<<<<< HEAD
 static void configure_app_logging(void)
 {
 #if APP_DEBUG_LOGS
@@ -77,13 +76,6 @@ static void configure_app_logging(void)
 #endif
 }
 
-static bool is_system_time_valid(void)
-{
-    time_t now = 0;
-    time(&now);
-    return now >= 1704067200; // 2024-01-01 00:00:00 UTC
-}
-
 static void refresh_clock_labels_locked(void)
 {
     if (uic_clock_time != NULL) {
@@ -93,14 +85,14 @@ static void refresh_clock_labels_locked(void)
     if (uic_clock_date != NULL) {
         lv_label_set_text(uic_clock_date, current_date_str);
     }
-=======
+}
+
 static bool has_valid_system_time(void)
 {
     time_t now = 0;
     time(&now);
     // 2024-01-01 00:00:00 UTC
     return now >= 1704067200;
->>>>>>> eb09978045c5fc6c81edabfac4185df3cae46989
 }
 
 // Data queue for thread-safe communication
@@ -315,7 +307,7 @@ void update_time_strings(void)
     time(&now);
     localtime_r(&now, &timeinfo);
     
-    if (!is_system_time_valid()) {
+    if (!has_valid_system_time()) {
         snprintf(current_time_str, sizeof(current_time_str), "--:--");
         snprintf(current_date_str, sizeof(current_date_str), "Syncing...");
         return;
@@ -337,14 +329,6 @@ void clock_update_task(void *pvParameters)
     const TickType_t xFrequency = pdMS_TO_TICKS(1000); // Update every second
     
     while (1) {
-<<<<<<< HEAD
-        update_time_strings();
-
-        // Update UI with LVGL lock
-        if (lvgl_port_lock(pdMS_TO_TICKS(100))) {
-            refresh_clock_labels_locked();
-            lvgl_port_unlock();
-=======
         if (has_valid_system_time()) {
             time_synchronized = true;
             update_time_strings();
@@ -373,7 +357,6 @@ void clock_update_task(void *pvParameters)
                 }
                 lvgl_port_unlock();
             }
->>>>>>> eb09978045c5fc6c81edabfac4185df3cae46989
         }
         
         vTaskDelayUntil(&xLastWakeTime, xFrequency);
