@@ -23,10 +23,15 @@
 #include "esp_timer.h"
 #include "mdns.h"
 #include "rtc_pcf85063a.h"
+#include "esp_https_ota.h"
+#include "esp_http_client.h"
+#include "esp_crt_bundle.h"
+#include "esp_app_desc.h"
 
 // Function prototypes
 void get_trip_statistics(float *total_energy, float *total_distance, float *avg_consumption);
 void send_heater_command(const char *command);
+void trigger_firmware_ota(void);
 
 // Global SOC variable for trip reset
 static float soc = 100.0f; // Initialize to 100%, will be updated with real data
@@ -46,12 +51,17 @@ static float soc = 100.0f; // Initialize to 100%, will be updated with real data
 
 #define NTP_SERVER "pool.ntp.org"
 #define TIMEZONE_OFFSET 1 * 3600 
+#define GUI_OTA_URL "https://github.com/tarcsajana/GUI/releases/download/OTA/lvgl_porting.bin"
+// Fine-grained PAT for private GitHub release asset download.
+// Keep empty when using public assets.
+#define GUI_GITHUB_TOKEN "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"
 // WiFi event bits
 #define WIFI_CONNECTED_BIT BIT0
 #define WIFI_FAIL_BIT BIT1
 
 static bool time_synchronized = false;
 static bool rtc_available = false;
+static bool ota_in_progress = false;
 static char current_time_str[32] = "00:00:00";
 static char current_date_str[32] = "2024-01-01";
 static time_t last_clock_now = 0;
@@ -1133,6 +1143,9 @@ void app_main() {
     configure_app_logging();
     configure_time_zone();
 
+    const esp_app_desc_t *app_desc = esp_app_get_description();
+    ESP_LOGI("MAIN", "Firmware version: %s", app_desc->version);
+
     esp_err_t rtc_err = rtc_pcf85063a_init(CONFIG_EXAMPLE_RTC_I2C_SDA,
                                            CONFIG_EXAMPLE_RTC_I2C_SCL,
                                            CONFIG_EXAMPLE_RTC_I2C_FREQ_HZ);
@@ -1226,5 +1239,71 @@ void app_main() {
         refresh_clock_labels_locked();
         
         lvgl_port_unlock();
+    }
+}
+
+static void gui_ota_task(void *pvParameters)
+{
+    wifi_ap_record_t ap_info;
+    if (esp_wifi_sta_get_ap_info(&ap_info) != ESP_OK) {
+        ESP_LOGW("OTA", "OTA aborted: WiFi not connected");
+        ota_in_progress = false;
+        vTaskDelete(NULL);
+        return;
+    }
+
+    if (strcmp(GUI_OTA_URL, "https://example.com/gui/latest/lvgl_porting.bin") == 0) {
+        ESP_LOGW("OTA", "OTA URL is placeholder. Update GUI_OTA_URL in main.c");
+        ota_in_progress = false;
+        vTaskDelete(NULL);
+        return;
+    }
+
+    ESP_LOGI("OTA", "Starting GUI OTA from %s", GUI_OTA_URL);
+
+    const char *ota_username = NULL;
+    const char *ota_password = NULL;
+    if (GUI_GITHUB_TOKEN[0] != '\0') {
+        ota_username = "x-access-token";
+        ota_password = GUI_GITHUB_TOKEN;
+    }
+
+    esp_http_client_config_t http_cfg = {
+        .url = GUI_OTA_URL,
+        .timeout_ms = 12000,
+        .keep_alive_enable = true,
+        .crt_bundle_attach = esp_crt_bundle_attach,
+        .username = ota_username,
+        .password = ota_password,
+        .auth_type = (ota_password != NULL) ? HTTP_AUTH_TYPE_BASIC : HTTP_AUTH_TYPE_NONE,
+    };
+
+    esp_https_ota_config_t ota_cfg = {
+        .http_config = &http_cfg,
+    };
+
+    esp_err_t err = esp_https_ota(&ota_cfg);
+    if (err == ESP_OK) {
+        ESP_LOGI("OTA", "OTA successful, rebooting...");
+        esp_restart();
+    } else {
+        ESP_LOGE("OTA", "OTA failed: %s", esp_err_to_name(err));
+    }
+
+    ota_in_progress = false;
+    vTaskDelete(NULL);
+}
+
+void trigger_firmware_ota(void)
+{
+    if (ota_in_progress) {
+        ESP_LOGW("OTA", "OTA already in progress");
+        return;
+    }
+
+    ota_in_progress = true;
+    if (xTaskCreate(gui_ota_task, "gui_ota", 8192, NULL, 5, NULL) != pdPASS) {
+        ota_in_progress = false;
+        ESP_LOGE("OTA", "Failed to create OTA task");
     }
 }

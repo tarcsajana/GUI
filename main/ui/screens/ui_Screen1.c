@@ -4,6 +4,7 @@
 // Project name: SquareLine_Project
 
 #include "../ui.h"
+#include "esp_app_desc.h"
 
 lv_obj_t * uic_avgconsumption;
 lv_obj_t * uic_totaldistancetraveled;
@@ -26,6 +27,9 @@ lv_obj_t * ui_Button3 = NULL;
 lv_obj_t * ui_Label15 = NULL;
 lv_obj_t * ui_Button6 = NULL;
 lv_obj_t * ui_Label17 = NULL;
+lv_obj_t * ui_Button8 = NULL;
+lv_obj_t * ui_Label23 = NULL;
+lv_obj_t * ui_Label24 = NULL;
 lv_obj_t * ui_Label18 = NULL;
 lv_obj_t * ui_Label19 = NULL;
 lv_obj_t * ui_Label20 = NULL;
@@ -202,6 +206,35 @@ void ui_Screen1_screen_init(void)
     lv_label_set_text(ui_Label17, "Reboot");
     lv_obj_set_style_text_font(ui_Label17, &lv_font_montserrat_26, LV_PART_MAIN | LV_STATE_DEFAULT);
 
+    ui_Button8 = lv_btn_create(ui_Screen1);
+    lv_obj_set_width(ui_Button8, 159);
+    lv_obj_set_height(ui_Button8, 61);
+    lv_obj_set_x(ui_Button8, 372);
+    lv_obj_set_y(ui_Button8, 436);
+    lv_obj_set_align(ui_Button8, LV_ALIGN_CENTER);
+    lv_obj_add_flag(ui_Button8, LV_OBJ_FLAG_SCROLL_ON_FOCUS);     /// Flags
+    lv_obj_clear_flag(ui_Button8, LV_OBJ_FLAG_SCROLLABLE);      /// Flags
+    lv_obj_set_style_bg_color(ui_Button8, lv_color_hex(0x878686), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_opa(ui_Button8, 100, LV_PART_MAIN | LV_STATE_DEFAULT);
+
+    ui_Label23 = lv_label_create(ui_Screen1);
+    lv_obj_set_width(ui_Label23, LV_SIZE_CONTENT);   /// 1
+    lv_obj_set_height(ui_Label23, LV_SIZE_CONTENT);    /// 1
+    lv_obj_set_x(ui_Label23, 372);
+    lv_obj_set_y(ui_Label23, 435);
+    lv_obj_set_align(ui_Label23, LV_ALIGN_CENTER);
+    lv_label_set_text(ui_Label23, "OTA");
+    lv_obj_set_style_text_font(ui_Label23, &lv_font_montserrat_26, LV_PART_MAIN | LV_STATE_DEFAULT);
+
+    ui_Label24 = lv_label_create(ui_Screen1);
+    lv_obj_set_width(ui_Label24, LV_SIZE_CONTENT);   /// 1
+    lv_obj_set_height(ui_Label24, LV_SIZE_CONTENT);    /// 1
+    lv_obj_set_x(ui_Label24, 372);
+    lv_obj_set_y(ui_Label24, 474);
+    lv_obj_set_align(ui_Label24, LV_ALIGN_CENTER);
+    lv_label_set_text_fmt(ui_Label24, "v%s", esp_app_get_description()->version);
+    lv_obj_set_style_text_font(ui_Label24, &lv_font_montserrat_16, LV_PART_MAIN | LV_STATE_DEFAULT);
+
     ui_Label18 = lv_label_create(ui_Screen1);
     lv_obj_set_width(ui_Label18, LV_SIZE_CONTENT);   /// 1
     lv_obj_set_height(ui_Label18, LV_SIZE_CONTENT);    /// 1
@@ -240,6 +273,7 @@ void ui_Screen1_screen_init(void)
 
     lv_obj_add_event_cb(ui_Button3, ui_event_Button3, LV_EVENT_ALL, NULL);
     lv_obj_add_event_cb(ui_Button6, ui_event_Button6, LV_EVENT_ALL, NULL);
+    lv_obj_add_event_cb(ui_Button8, ui_event_gui_ota, LV_EVENT_ALL, NULL);
     uic_clock_time = ui_uiclocktime;
     uic_clock_date = ui_clockdate;
     uic_consumption_label = ui_Consumption;
@@ -275,6 +309,9 @@ void ui_Screen1_screen_destroy(void)
     ui_Label15 = NULL;
     ui_Button6 = NULL;
     ui_Label17 = NULL;
+    ui_Button8 = NULL;
+    ui_Label23 = NULL;
+    ui_Label24 = NULL;
     ui_Label18 = NULL;
     ui_Label19 = NULL;
     ui_Label20 = NULL;

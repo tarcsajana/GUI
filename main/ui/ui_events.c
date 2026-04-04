@@ -8,10 +8,17 @@
 
 // Forward declaration for heater command function
 extern void send_heater_command(const char *command);
+extern void trigger_firmware_ota(void);
 
 void test(lv_event_t * e) {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
         esp_restart();
+    }
+}
+
+void ui_event_gui_ota(lv_event_t * e) {
+    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+        trigger_firmware_ota();
     }
 }
 
