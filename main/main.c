@@ -52,6 +52,13 @@ static bool time_synchronized = false;
 static char current_time_str[32] = "00:00:00";
 static char current_date_str[32] = "2024-01-01";
 
+static void configure_time_zone(void)
+{
+    // Central European Time with DST (Oslo)
+    setenv("TZ", "CET-1CEST,M3.5.0/2,M10.5.0/3", 1);
+    tzset();
+}
+
 static void configure_app_logging(void)
 {
 #if APP_DEBUG_LOGS
@@ -93,6 +100,60 @@ static bool has_valid_system_time(void)
     time(&now);
     // 2024-01-01 00:00:00 UTC
     return now >= 1704067200;
+}
+
+static int month_from_str(const char *mon)
+{
+    static const char *months[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+    for (int i = 0; i < 12; i++) {
+        if (strncmp(mon, months[i], 3) == 0) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+static void initialize_time_from_build_if_needed(void)
+{
+    if (has_valid_system_time()) {
+        return;
+    }
+
+    char mon[4] = {0};
+    int day = 0, year = 0;
+    int hour = 0, min = 0, sec = 0;
+
+    if (sscanf(__DATE__, "%3s %d %d", mon, &day, &year) != 3) {
+        return;
+    }
+    if (sscanf(__TIME__, "%d:%d:%d", &hour, &min, &sec) != 3) {
+        return;
+    }
+
+    int month = month_from_str(mon);
+    if (month < 0) {
+        return;
+    }
+
+    struct tm tm_build = {0};
+    tm_build.tm_year = year - 1900;
+    tm_build.tm_mon = month;
+    tm_build.tm_mday = day;
+    tm_build.tm_hour = hour;
+    tm_build.tm_min = min;
+    tm_build.tm_sec = sec;
+    tm_build.tm_isdst = -1;
+
+    time_t build_time = mktime(&tm_build);
+    if (build_time <= 0) {
+        return;
+    }
+
+    struct timeval tv = {
+        .tv_sec = build_time,
+        .tv_usec = 0,
+    };
+    settimeofday(&tv, NULL);
 }
 
 // Data queue for thread-safe communication
@@ -284,10 +345,8 @@ void time_sync_notification_cb(struct timeval *tv)
 void initialize_ntp(void)
 {
     ESP_LOGI("TIME", "Initializing NTP client...");
-    
-    // Set timezone (Oslo is UTC+1)
-    setenv("TZ", "CET-1CEST,M3.5.0/2,M10.5.0/3", 1);  // Central European Time with DST
-    tzset();
+
+    configure_time_zone();
     
     // Initialize SNTP
     esp_sntp_setoperatingmode(SNTP_OPMODE_POLL);
@@ -976,6 +1035,8 @@ void udp_server_task(void *pvParameters) {
 
 void app_main() {
     configure_app_logging();
+    configure_time_zone();
+    initialize_time_from_build_if_needed();
 
     // Create data queue for UI updates
     sensor_data_queue = xQueueCreate(20, sizeof(sensor_data_t)); // Increased from 10 to 20
