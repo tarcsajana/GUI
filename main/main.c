@@ -35,6 +35,9 @@ static float soc = 100.0f; // Initialize to 100%, will be updated with real data
 #define WIFI_SSID "HunorCar"
 #define WIFI_PASSWORD "Jucymucy8581"
 
+// Set to 1 for verbose serial logging, 0 for quieter normal operation.
+#define APP_DEBUG_LOGS 0
+
 // Diesel Heater Control Configuration
 #define HEATER_UDP_PORT 4211
 #define HEATER_HOSTNAME "diesel-heater.local"  // mDNS hostname instead of static IP
@@ -48,6 +51,48 @@ static float soc = 100.0f; // Initialize to 100%, will be updated with real data
 static bool time_synchronized = false;
 static char current_time_str[32] = "00:00:00";
 static char current_date_str[32] = "2024-01-01";
+
+static void configure_app_logging(void)
+{
+#if APP_DEBUG_LOGS
+    esp_log_level_set("*", ESP_LOG_INFO);
+    esp_log_level_set("lvgl_port", ESP_LOG_DEBUG);
+#else
+    esp_log_level_set("*", ESP_LOG_WARN);
+    esp_log_level_set("wifi", ESP_LOG_ERROR);
+    esp_log_level_set("esp_netif_handlers", ESP_LOG_ERROR);
+    esp_log_level_set("mdns", ESP_LOG_ERROR);
+    esp_log_level_set("example", ESP_LOG_ERROR);
+    esp_log_level_set("lvgl_port", ESP_LOG_ERROR);
+    esp_log_level_set("TIME", ESP_LOG_WARN);
+    esp_log_level_set("WIFI", ESP_LOG_WARN);
+    esp_log_level_set("UDP", ESP_LOG_WARN);
+    esp_log_level_set("HEATER", ESP_LOG_WARN);
+    esp_log_level_set("MAIN", ESP_LOG_WARN);
+    esp_log_level_set("DATA", ESP_LOG_WARN);
+    esp_log_level_set("UI", ESP_LOG_WARN);
+    esp_log_level_set("TRIP", ESP_LOG_WARN);
+    esp_log_level_set("UDS", ESP_LOG_WARN);
+#endif
+}
+
+static bool is_system_time_valid(void)
+{
+    time_t now = 0;
+    time(&now);
+    return now >= 1704067200; // 2024-01-01 00:00:00 UTC
+}
+
+static void refresh_clock_labels_locked(void)
+{
+    if (uic_clock_time != NULL) {
+        lv_label_set_text(uic_clock_time, current_time_str);
+    }
+
+    if (uic_clock_date != NULL) {
+        lv_label_set_text(uic_clock_date, current_date_str);
+    }
+}
 
 // Data queue for thread-safe communication
 typedef struct {
@@ -197,9 +242,17 @@ void update_time_strings(void)
     time(&now);
     localtime_r(&now, &timeinfo);
     
+    if (!is_system_time_valid()) {
+        snprintf(current_time_str, sizeof(current_time_str), "--:--");
+        snprintf(current_date_str, sizeof(current_date_str), "Syncing...");
+        return;
+    }
+
+    time_synchronized = true;
+
     // Format time (24-hour format)
     strftime(current_time_str, sizeof(current_time_str), "%H:%M", &timeinfo);
-    
+
     // Format date
     strftime(current_date_str, sizeof(current_date_str), "%Y-%m-%d", &timeinfo);
 }
@@ -211,23 +264,12 @@ void clock_update_task(void *pvParameters)
     const TickType_t xFrequency = pdMS_TO_TICKS(1000); // Update every second
     
     while (1) {
-        if (time_synchronized) {
-            update_time_strings();
-            
-            // Update UI with LVGL lock
-            if (lvgl_port_lock(pdMS_TO_TICKS(100))) {
-                // Update time display
-                if (uic_clock_time != NULL) {
-                    lv_label_set_text(uic_clock_time, current_time_str);
-                }
-                
-                // Update date display
-                if (uic_clock_date != NULL) {
-                    lv_label_set_text(uic_clock_date, current_date_str);
-                }
-                
-                lvgl_port_unlock();
-            }
+        update_time_strings();
+
+        // Update UI with LVGL lock
+        if (lvgl_port_lock(pdMS_TO_TICKS(100))) {
+            refresh_clock_labels_locked();
+            lvgl_port_unlock();
         }
         
         vTaskDelayUntil(&xLastWakeTime, xFrequency);
@@ -867,6 +909,8 @@ void udp_server_task(void *pvParameters) {
 }
 
 void app_main() {
+    configure_app_logging();
+
     // Create data queue for UI updates
     sensor_data_queue = xQueueCreate(20, sizeof(sensor_data_t)); // Increased from 10 to 20
     
@@ -923,9 +967,8 @@ void app_main() {
         if (ui_labelvolt != NULL) lv_label_set_text(ui_labelvolt, "0.0");
         if (ui_wifi != NULL) lv_label_set_text(ui_wifi, "Connecting...");
         
-        // Initialize clock displays
-        if (uic_clock_time != NULL) lv_label_set_text(uic_clock_time, "--:--:--");
-        if (uic_clock_date != NULL) lv_label_set_text(uic_clock_date, "----/--/--");
+        update_time_strings();
+        refresh_clock_labels_locked();
         
         lvgl_port_unlock();
     }
