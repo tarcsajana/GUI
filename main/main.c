@@ -22,6 +22,7 @@
 #include "esp_sntp.h"
 #include "esp_timer.h"
 #include "mdns.h"
+#include "rtc_pcf85063a.h"
 
 // Function prototypes
 void get_trip_statistics(float *total_energy, float *total_distance, float *avg_consumption);
@@ -31,6 +32,7 @@ void send_heater_command(const char *command);
 static float soc = 100.0f; // Initialize to 100%, will be updated with real data
 
 #define PORT 4210
+#define UDP_RX_BUFFER_SIZE 256
 // WiFi Configuration - Update these with your network credentials
 #define WIFI_SSID "HunorCar"
 #define WIFI_PASSWORD "Jucymucy8581"
@@ -49,8 +51,106 @@ static float soc = 100.0f; // Initialize to 100%, will be updated with real data
 #define WIFI_FAIL_BIT BIT1
 
 static bool time_synchronized = false;
+static bool rtc_available = false;
 static char current_time_str[32] = "00:00:00";
 static char current_date_str[32] = "2024-01-01";
+static time_t last_clock_now = 0;
+static int64_t last_clock_uptime_us = 0;
+
+static bool has_valid_system_time(void);
+
+static bool initialize_time_from_rtc_if_available(void)
+{
+    if (!rtc_available) {
+        return false;
+    }
+
+    rtc_datetime_t rtc_now = {0};
+    esp_err_t err = rtc_pcf85063a_read(&rtc_now);
+    if (err != ESP_OK) {
+        ESP_LOGW("TIME", "RTC read failed: %s", esp_err_to_name(err));
+        return false;
+    }
+
+    if (rtc_now.year < 2024 || rtc_now.year > 2069 || rtc_now.month < 1 || rtc_now.month > 12 || rtc_now.day < 1 || rtc_now.day > 31 ||
+        rtc_now.hour > 23 || rtc_now.min > 59 || rtc_now.sec > 59) {
+        ESP_LOGW("TIME", "RTC contains invalid date/time");
+        return false;
+    }
+
+    struct tm tm_rtc = {0};
+    tm_rtc.tm_year = rtc_now.year - 1900;
+    tm_rtc.tm_mon = rtc_now.month - 1;
+    tm_rtc.tm_mday = rtc_now.day;
+    tm_rtc.tm_hour = rtc_now.hour;
+    tm_rtc.tm_min = rtc_now.min;
+    tm_rtc.tm_sec = rtc_now.sec;
+    tm_rtc.tm_isdst = -1;
+
+    time_t rtc_epoch = mktime(&tm_rtc);
+    if (rtc_epoch <= 0) {
+        ESP_LOGW("TIME", "RTC date/time conversion failed");
+        return false;
+    }
+
+    struct timeval tv = {
+        .tv_sec = rtc_epoch,
+        .tv_usec = 0,
+    };
+    settimeofday(&tv, NULL);
+
+    ESP_LOGI("TIME", "System time seeded from RTC: %04u-%02u-%02u %02u:%02u:%02u",
+             rtc_now.year, rtc_now.month, rtc_now.day, rtc_now.hour, rtc_now.min, rtc_now.sec);
+    return true;
+}
+
+static void update_rtc_from_system_time_if_available(void)
+{
+    if (!rtc_available || !has_valid_system_time()) {
+        return;
+    }
+
+    time_t now = 0;
+    struct tm timeinfo = {0};
+    time(&now);
+    localtime_r(&now, &timeinfo);
+
+    rtc_datetime_t rtc_set = {
+        .year = (uint16_t)(timeinfo.tm_year + 1900),
+        .month = (uint8_t)(timeinfo.tm_mon + 1),
+        .day = (uint8_t)timeinfo.tm_mday,
+        .dotw = (uint8_t)timeinfo.tm_wday,
+        .hour = (uint8_t)timeinfo.tm_hour,
+        .min = (uint8_t)timeinfo.tm_min,
+        .sec = (uint8_t)timeinfo.tm_sec,
+    };
+
+    esp_err_t err = rtc_pcf85063a_write(&rtc_set);
+    if (err != ESP_OK) {
+        ESP_LOGW("TIME", "RTC write failed: %s", esp_err_to_name(err));
+    } else {
+        ESP_LOGI("TIME", "RTC updated from synchronized system time");
+    }
+}
+
+static void ensure_system_clock_progresses(void)
+{
+    time_t now = 0;
+    time(&now);
+    int64_t uptime_us = esp_timer_get_time();
+
+    if (last_clock_now > 0 && now <= last_clock_now && (uptime_us - last_clock_uptime_us) > 1500000) {
+        struct timeval tv = {
+            .tv_sec = last_clock_now + 1,
+            .tv_usec = 0,
+        };
+        settimeofday(&tv, NULL);
+        now = last_clock_now + 1;
+    }
+
+    last_clock_now = now;
+    last_clock_uptime_us = uptime_us;
+}
 
 static void configure_time_zone(void)
 {
@@ -204,6 +304,7 @@ static uint64_t last_data_received_time = 0;  // Timestamp of last received data
 static const uint64_t DATA_TIMEOUT_MS = 20000;  // 20 seconds timeout
 
 #define POWER_ANIM_DURATION_MS 220
+#define BATTW_ARC_SCALE 10
 
 static int32_t battw_arc_last = 0;
 static int32_t battw_label_last_tenths = 0;
@@ -226,9 +327,10 @@ static void battw_label_anim_exec_cb(void *obj, int32_t v)
 
 static void update_power_display_animated(float watt)
 {
-    float clamped_watt = (watt < -60000.0f) ? -60000.0f : (watt > 42000.0f) ? 42000.0f : watt;
+    float clamped_watt = (watt < -60000.0f) ? -60000.0f : (watt > 60000.0f) ? 60000.0f : watt;
     float kw = clamped_watt / 1000.0f;
-    int32_t target_arc = (int32_t)kw;
+    // Animate arc with 0.1 kW resolution to avoid step-like jumps.
+    int32_t target_arc = (int32_t)(kw * BATTW_ARC_SCALE);
     int32_t target_label_tenths = (int32_t)(kw * 10.0f);
 
     if (ui_battw != NULL) {
@@ -339,6 +441,7 @@ void time_sync_notification_cb(struct timeval *tv)
 {
     ESP_LOGI("TIME", "Time synchronization complete");
     time_synchronized = true;
+    update_rtc_from_system_time_if_available();
 }
 
 // Initialize NTP client
@@ -374,8 +477,8 @@ void update_time_strings(void)
 
     time_synchronized = true;
 
-    // Format time (24-hour format)
-    strftime(current_time_str, sizeof(current_time_str), "%H:%M", &timeinfo);
+    // Include seconds so live updates are visible during testing.
+    strftime(current_time_str, sizeof(current_time_str), "%H:%M:%S", &timeinfo);
 
     // Format date
     strftime(current_date_str, sizeof(current_date_str), "%Y-%m-%d", &timeinfo);
@@ -388,6 +491,8 @@ void clock_update_task(void *pvParameters)
     const TickType_t xFrequency = pdMS_TO_TICKS(1000); // Update every second
     
     while (1) {
+        ensure_system_clock_progresses();
+
         if (has_valid_system_time()) {
             time_synchronized = true;
             update_time_strings();
@@ -650,9 +755,9 @@ void process_received_data_with_consumption(float soc_in, float range, float tem
         .speed = speed_valid ? speed_kmh : -1.0f
     };
     
-    // Send to queue (non-blocking)
+    // Keep only the newest sample so the UI never lags behind old telemetry.
     if (sensor_data_queue != NULL) {
-        if (xQueueSend(sensor_data_queue, &data, 0) != pdTRUE) {
+        if (xQueueOverwrite(sensor_data_queue, &data) != pdTRUE) {
             ESP_LOGW("DATA", "Failed to queue sensor data");
         }
     }
@@ -881,22 +986,8 @@ void wifi_init_sta_with_ntp(void) {
     s_wifi_event_group = xEventGroupCreate();
 
     ESP_ERROR_CHECK(esp_netif_init());
-    esp_netif_t *sta_netif = esp_netif_create_default_wifi_sta();
-
-    // Configure static IP: 192.168.1.104
-    ESP_ERROR_CHECK(esp_netif_dhcpc_stop(sta_netif));
-    
-    esp_netif_ip_info_t ip_info;
-    IP4_ADDR(&ip_info.ip, 192, 168, 1, 104);
-    IP4_ADDR(&ip_info.gw, 192, 168, 1, 1);
-    IP4_ADDR(&ip_info.netmask, 255, 255, 255, 0);
-    ESP_ERROR_CHECK(esp_netif_set_ip_info(sta_netif, &ip_info));
-    
-    esp_netif_dns_info_t dns_info;
-    IP4_ADDR(&dns_info.ip.u_addr.ip4, 192, 168, 1, 1);
-    ESP_ERROR_CHECK(esp_netif_set_dns_info(sta_netif, ESP_NETIF_DNS_MAIN, &dns_info));
-    IP4_ADDR(&dns_info.ip.u_addr.ip4, 8, 8, 8, 8);
-    ESP_ERROR_CHECK(esp_netif_set_dns_info(sta_netif, ESP_NETIF_DNS_BACKUP, &dns_info));
+    // Keep default station netif configuration: DHCP assigns IP/gateway/DNS.
+    esp_netif_create_default_wifi_sta();
 
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
@@ -955,7 +1046,7 @@ void wifi_init_sta_with_ntp(void) {
 }
 
 void udp_server_task(void *pvParameters) {
-    char rx_buffer[128];
+    char rx_buffer[UDP_RX_BUFFER_SIZE];
     struct sockaddr_in dest_addr;
     dest_addr.sin_addr.s_addr = htonl(INADDR_ANY);
     dest_addr.sin_family = AF_INET;
@@ -985,6 +1076,11 @@ void udp_server_task(void *pvParameters) {
                            (struct sockaddr *)&source_addr, &socklen);
 
         if (len > 0) {
+            if (len >= (int)sizeof(rx_buffer) - 1) {
+                ESP_LOGW("UDP", "Dropped oversized UDP packet (%d bytes), buffer=%d", len, (int)sizeof(rx_buffer));
+                continue;
+            }
+
             rx_buffer[len] = 0; // Null-terminate
             ESP_LOGI("UDP", "Received %d bytes from %s:%d", len, 
                      inet_ntoa(source_addr.sin_addr), ntohs(source_addr.sin_port));
@@ -1036,10 +1132,22 @@ void udp_server_task(void *pvParameters) {
 void app_main() {
     configure_app_logging();
     configure_time_zone();
-    initialize_time_from_build_if_needed();
 
-    // Create data queue for UI updates
-    sensor_data_queue = xQueueCreate(20, sizeof(sensor_data_t)); // Increased from 10 to 20
+    esp_err_t rtc_err = rtc_pcf85063a_init(CONFIG_EXAMPLE_RTC_I2C_SDA,
+                                           CONFIG_EXAMPLE_RTC_I2C_SCL,
+                                           CONFIG_EXAMPLE_RTC_I2C_FREQ_HZ);
+    if (rtc_err == ESP_OK) {
+        rtc_available = true;
+    } else {
+        ESP_LOGW("TIME", "RTC init failed (%s), falling back to build/NTP time", esp_err_to_name(rtc_err));
+    }
+
+    if (!initialize_time_from_rtc_if_available()) {
+        initialize_time_from_build_if_needed();
+    }
+
+    // Create queue for latest UI sample only (overwrite semantics for low latency)
+    sensor_data_queue = xQueueCreate(1, sizeof(sensor_data_t));
     
     if (sensor_data_queue == NULL) {
         ESP_LOGE("MAIN", "Failed to create sensor data queue");
@@ -1064,19 +1172,29 @@ void app_main() {
     wifi_init_sta_with_ntp();  // Use the modified function
 
     // Start UDP server task
-    xTaskCreate(udp_server_task, "udp_server", 4096, NULL, 5, NULL);
+    if (xTaskCreate(udp_server_task, "udp_server", 4096, NULL, 5, NULL) != pdPASS) {
+        ESP_LOGE("MAIN", "Failed to create udp_server task");
+    }
     
     // Start UI update task
-    xTaskCreate(ui_update_task_with_consumption, "ui_update", 4096, NULL, 4, NULL);
+    if (xTaskCreate(ui_update_task_with_consumption, "ui_update", 4096, NULL, 4, NULL) != pdPASS) {
+        ESP_LOGE("MAIN", "Failed to create ui_update task");
+    }
     
     // Start clock update task
-    xTaskCreate(clock_update_task, "clock_update", 4096, NULL, 3, NULL);
+    if (xTaskCreate(clock_update_task, "clock_update", 4096, NULL, 3, NULL) != pdPASS) {
+        ESP_LOGE("MAIN", "Failed to create clock_update task");
+    }
     
     // Start UDS data monitor task
-    xTaskCreate(uds_monitor_task, "uds_monitor", 4096, NULL, 3, NULL);
+    if (xTaskCreate(uds_monitor_task, "uds_monitor", 4096, NULL, 3, NULL) != pdPASS) {
+        ESP_LOGE("MAIN", "Failed to create uds_monitor task");
+    }
     
     // Start heater temperature polling task
-    xTaskCreate(heater_temperature_task, "heater_temps", 4096, NULL, 3, NULL);
+    if (xTaskCreate(heater_temperature_task, "heater_temps", 4096, NULL, 3, NULL) != pdPASS) {
+        ESP_LOGE("MAIN", "Failed to create heater_temps task");
+    }
     
     ESP_LOGI("MAIN", "Application started successfully");
 
@@ -1096,7 +1214,7 @@ void app_main() {
 
         if (ui_battw != NULL) {
             // Center-zero behavior: positive and negative kW move in opposite directions.
-            lv_arc_set_range(ui_battw, -60, 60);
+            lv_arc_set_range(ui_battw, -60 * BATTW_ARC_SCALE, 60 * BATTW_ARC_SCALE);
             lv_arc_set_mode(ui_battw, LV_ARC_MODE_SYMMETRICAL);
             lv_arc_set_value(ui_battw, 0);
         }

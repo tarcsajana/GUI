@@ -114,4 +114,27 @@ menu "Example Configuration"
             help
                 Height of LVGL buffer. The width of the buffer is the same as that of the LCD.
     endmenu
+
+    menu "RTC"
+        config EXAMPLE_RTC_I2C_SCL
+            int "RTC I2C SCL GPIO"
+            default 19 if IDF_TARGET_ESP32 || IDF_TARGET_ESP32S2 || IDF_TARGET_ESP32S3
+            default 2
+            help
+                GPIO number used for PCF85063A I2C SCL line.
+
+        config EXAMPLE_RTC_I2C_SDA
+            int "RTC I2C SDA GPIO"
+            default 18 if IDF_TARGET_ESP32 || IDF_TARGET_ESP32S2 || IDF_TARGET_ESP32S3
+            default 1
+            help
+                GPIO number used for PCF85063A I2C SDA line.
+
+        config EXAMPLE_RTC_I2C_FREQ_HZ
+            int "RTC I2C Clock (Hz)"
+            default 400000
+            range 10000 1000000
+            help
+                I2C clock frequency for PCF85063A.
+    endmenu
 endmenu
