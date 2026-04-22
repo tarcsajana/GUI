@@ -54,7 +54,9 @@ static float soc = 100.0f; // Initialize to 100%, will be updated with real data
 #define GUI_OTA_URL "https://github.com/tarcsajana/GUI/releases/download/OTA/lvgl_porting.bin"
 // Fine-grained PAT for private GitHub release asset download.
 // Keep empty when using public assets.
-#define GUI_GITHUB_TOKEN "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"
+#ifndef GUI_GITHUB_TOKEN
+#define GUI_GITHUB_TOKEN ""
+#endif
 // WiFi event bits
 #define WIFI_CONNECTED_BIT BIT0
 #define WIFI_FAIL_BIT BIT1
