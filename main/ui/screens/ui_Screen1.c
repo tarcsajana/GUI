@@ -189,8 +189,8 @@ void ui_Screen1_screen_init(void)
     ui_Button6 = lv_btn_create(ui_Screen1);
     lv_obj_set_width(ui_Button6, 159);
     lv_obj_set_height(ui_Button6, 61);
-    lv_obj_set_x(ui_Button6, 198);
-    lv_obj_set_y(ui_Button6, 436);
+    lv_obj_set_x(ui_Button6, 212);
+    lv_obj_set_y(ui_Button6, 434);
     lv_obj_set_align(ui_Button6, LV_ALIGN_CENTER);
     lv_obj_add_flag(ui_Button6, LV_OBJ_FLAG_SCROLL_ON_FOCUS);     /// Flags
     lv_obj_clear_flag(ui_Button6, LV_OBJ_FLAG_SCROLLABLE);      /// Flags
@@ -200,8 +200,8 @@ void ui_Screen1_screen_init(void)
     ui_Label17 = lv_label_create(ui_Screen1);
     lv_obj_set_width(ui_Label17, LV_SIZE_CONTENT);   /// 1
     lv_obj_set_height(ui_Label17, LV_SIZE_CONTENT);    /// 1
-    lv_obj_set_x(ui_Label17, 202);
-    lv_obj_set_y(ui_Label17, 435);
+    lv_obj_set_x(ui_Label17, 212);
+    lv_obj_set_y(ui_Label17, 434);
     lv_obj_set_align(ui_Label17, LV_ALIGN_CENTER);
     lv_label_set_text(ui_Label17, "Reboot");
     lv_obj_set_style_text_font(ui_Label17, &lv_font_montserrat_26, LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -209,8 +209,8 @@ void ui_Screen1_screen_init(void)
     ui_Button8 = lv_btn_create(ui_Screen1);
     lv_obj_set_width(ui_Button8, 159);
     lv_obj_set_height(ui_Button8, 61);
-    lv_obj_set_x(ui_Button8, 372);
-    lv_obj_set_y(ui_Button8, 436);
+    lv_obj_set_x(ui_Button8, 40);
+    lv_obj_set_y(ui_Button8, 434);
     lv_obj_set_align(ui_Button8, LV_ALIGN_CENTER);
     lv_obj_add_flag(ui_Button8, LV_OBJ_FLAG_SCROLL_ON_FOCUS);     /// Flags
     lv_obj_clear_flag(ui_Button8, LV_OBJ_FLAG_SCROLLABLE);      /// Flags
@@ -220,8 +220,8 @@ void ui_Screen1_screen_init(void)
     ui_Label23 = lv_label_create(ui_Screen1);
     lv_obj_set_width(ui_Label23, LV_SIZE_CONTENT);   /// 1
     lv_obj_set_height(ui_Label23, LV_SIZE_CONTENT);    /// 1
-    lv_obj_set_x(ui_Label23, 372);
-    lv_obj_set_y(ui_Label23, 435);
+    lv_obj_set_x(ui_Label23, 40);
+    lv_obj_set_y(ui_Label23, 434);
     lv_obj_set_align(ui_Label23, LV_ALIGN_CENTER);
     lv_label_set_text(ui_Label23, "OTA");
     lv_obj_set_style_text_font(ui_Label23, &lv_font_montserrat_26, LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -229,7 +229,7 @@ void ui_Screen1_screen_init(void)
     ui_Label24 = lv_label_create(ui_Screen1);
     lv_obj_set_width(ui_Label24, LV_SIZE_CONTENT);   /// 1
     lv_obj_set_height(ui_Label24, LV_SIZE_CONTENT);    /// 1
-    lv_obj_set_x(ui_Label24, 372);
+    lv_obj_set_x(ui_Label24, 212);
     lv_obj_set_y(ui_Label24, 474);
     lv_obj_set_align(ui_Label24, LV_ALIGN_CENTER);
     lv_label_set_text_fmt(ui_Label24, "v%s", esp_app_get_description()->version);
