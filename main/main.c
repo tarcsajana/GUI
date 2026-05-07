@@ -64,7 +64,7 @@ static float soc = 100.0f; // Initialize to 100%, will be updated with real data
 static bool time_synchronized = false;
 static bool rtc_available = false;
 static bool ota_in_progress = false;
-static char current_time_str[32] = "00:00:00";
+static char current_time_str[32] = "00:00";
 static char current_date_str[32] = "2024-01-01";
 static time_t last_clock_now = 0;
 static int64_t last_clock_uptime_us = 0;
@@ -111,8 +111,8 @@ static bool initialize_time_from_rtc_if_available(void)
     };
     settimeofday(&tv, NULL);
 
-    ESP_LOGI("TIME", "System time seeded from RTC: %04u-%02u-%02u %02u:%02u:%02u",
-             rtc_now.year, rtc_now.month, rtc_now.day, rtc_now.hour, rtc_now.min, rtc_now.sec);
+    ESP_LOGI("TIME", "System time seeded from RTC: %04u-%02u-%02u %02u:%02u",
+             rtc_now.year, rtc_now.month, rtc_now.day, rtc_now.hour, rtc_now.min);
     return true;
 }
 
@@ -238,7 +238,7 @@ static void initialize_time_from_build_if_needed(void)
     if (sscanf(__DATE__, "%3s %d %d", mon, &day, &year) != 3) {
         return;
     }
-    if (sscanf(__TIME__, "%d:%d:%d", &hour, &min, &sec) != 3) {
+    if (sscanf(__TIME__, "%d:%d", &hour, &min) != 2) {
         return;
     }
 
@@ -1034,7 +1034,7 @@ void wifi_init_sta_with_ntp(void) {
             WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
             pdFALSE,
             pdFALSE,
-            portMAX_DELAY);
+            pdMS_TO_TICKS(10000));  // 10 second timeout instead of blocking forever
 
     if (bits & WIFI_CONNECTED_BIT) {
         ESP_LOGI("WIFI", "Connected to AP SSID:%s password:%s", WIFI_SSID, WIFI_PASSWORD);
