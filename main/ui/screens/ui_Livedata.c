@@ -60,11 +60,6 @@ void ui_event_Button1(lv_event_t * e)
 
 // build funtions
 
-static void celltemp_glow_anim_cb(void *obj, int32_t v)
-{
-    lv_obj_set_style_shadow_width((lv_obj_t *)obj, v, LV_PART_MAIN | LV_STATE_DEFAULT);
-}
-
 void ui_Livedata_screen_init(void)
 {
     ui_Livedata = lv_obj_create(NULL);
@@ -162,26 +157,8 @@ void ui_Livedata_screen_init(void)
 
     lv_obj_set_style_arc_width(ui_celltemp, 20, LV_PART_INDICATOR | LV_STATE_DEFAULT);
     lv_obj_set_style_arc_rounded(ui_celltemp, true, LV_PART_INDICATOR | LV_STATE_DEFAULT);
-
     lv_obj_set_style_bg_color(ui_celltemp, lv_color_hex(0xFFFFFF), LV_PART_KNOB | LV_STATE_DEFAULT);
     lv_obj_set_style_bg_opa(ui_celltemp, 0, LV_PART_KNOB | LV_STATE_DEFAULT);
-    lv_obj_set_style_arc_color(ui_celltemp, lv_color_hex(0x00CFFF), LV_PART_INDICATOR | LV_STATE_DEFAULT);
-    lv_obj_set_style_shadow_color(ui_celltemp, lv_color_hex(0x00CFFF), LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_shadow_width(ui_celltemp, 20, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_shadow_spread(ui_celltemp, 4, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_shadow_opa(ui_celltemp, 180, LV_PART_MAIN | LV_STATE_DEFAULT);
-    {
-        lv_anim_t a;
-        lv_anim_init(&a);
-        lv_anim_set_var(&a, ui_celltemp);
-        lv_anim_set_exec_cb(&a, celltemp_glow_anim_cb);
-        lv_anim_set_values(&a, 10, 35);
-        lv_anim_set_time(&a, 1400);
-        lv_anim_set_playback_time(&a, 1400);
-        lv_anim_set_repeat_count(&a, LV_ANIM_REPEAT_INFINITE);
-        lv_anim_set_path_cb(&a, lv_anim_path_ease_in_out);
-        lv_anim_start(&a);
-    }
 
     ui_volts = lv_arc_create(ui_Livedata);
     lv_obj_set_width(ui_volts, 200);

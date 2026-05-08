@@ -315,47 +315,20 @@ static float soc_start = 100.0f; // Default to 100%, set on trip reset
 static uint64_t last_data_received_time = 0;  // Timestamp of last received data in milliseconds
 static const uint64_t DATA_TIMEOUT_MS = 20000;  // 20 seconds timeout
 
-#define POWER_ANIM_DURATION_MS 220
 #define BATTW_ARC_SCALE 10
 
 static int32_t battw_arc_last = 0;
 static int32_t battw_label_last_tenths = 0;
 
-static void battw_arc_anim_exec_cb(void *obj, int32_t v)
-{
-    if (obj != NULL) {
-        lv_arc_set_value((lv_obj_t *)obj, (int)v);
-    }
-}
-
-static void battw_label_anim_exec_cb(void *obj, int32_t v)
-{
-    if (obj != NULL) {
-        char watt_text[16];
-        snprintf(watt_text, sizeof(watt_text), "%.1fkw", ((float)v) / 10.0f);
-        lv_label_set_text((lv_obj_t *)obj, watt_text);
-    }
-}
-
 static void update_power_display_animated(float watt)
 {
     float clamped_watt = (watt < -60000.0f) ? -60000.0f : (watt > 60000.0f) ? 60000.0f : watt;
     float kw = clamped_watt / 1000.0f;
-    // Animate arc with 0.1 kW resolution to avoid step-like jumps.
     int32_t target_arc = (int32_t)(kw * BATTW_ARC_SCALE);
     int32_t target_label_tenths = (int32_t)(kw * 10.0f);
 
     if (ui_battw != NULL) {
-        lv_anim_del(ui_battw, battw_arc_anim_exec_cb);
-
-        lv_anim_t a;
-        lv_anim_init(&a);
-        lv_anim_set_var(&a, ui_battw);
-        lv_anim_set_exec_cb(&a, battw_arc_anim_exec_cb);
-        lv_anim_set_values(&a, battw_arc_last, target_arc);
-        lv_anim_set_time(&a, POWER_ANIM_DURATION_MS);
-        lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
-        lv_anim_start(&a);
+        lv_arc_set_value(ui_battw, (int)target_arc);
 
         if (target_arc >= 0) {
             lv_obj_set_style_arc_color(ui_battw, lv_color_hex(0x00FF00), LV_PART_INDICATOR | LV_STATE_DEFAULT);
@@ -365,16 +338,9 @@ static void update_power_display_animated(float watt)
     }
 
     if (ui_labelbattw != NULL) {
-        lv_anim_del(ui_labelbattw, battw_label_anim_exec_cb);
-
-        lv_anim_t a;
-        lv_anim_init(&a);
-        lv_anim_set_var(&a, ui_labelbattw);
-        lv_anim_set_exec_cb(&a, battw_label_anim_exec_cb);
-        lv_anim_set_values(&a, battw_label_last_tenths, target_label_tenths);
-        lv_anim_set_time(&a, POWER_ANIM_DURATION_MS);
-        lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
-        lv_anim_start(&a);
+        char watt_text[16];
+        snprintf(watt_text, sizeof(watt_text), "%.1fkw", ((float)target_label_tenths) / 10.0f);
+        lv_label_set_text(ui_labelbattw, watt_text);
     }
 
     battw_arc_last = target_arc;
@@ -489,8 +455,7 @@ void update_time_strings(void)
 
     time_synchronized = true;
 
-    // Include seconds so live updates are visible during testing.
-    strftime(current_time_str, sizeof(current_time_str), "%H:%M:%S", &timeinfo);
+    strftime(current_time_str, sizeof(current_time_str), "%H:%M", &timeinfo);
 
     // Format date
     strftime(current_date_str, sizeof(current_date_str), "%Y-%m-%d", &timeinfo);
@@ -595,7 +560,7 @@ void ui_update_task_with_consumption(void *pvParameters) {
                         if (ui_SOCbar != NULL) {
                         int soc_val = (int)data.soc;
                         soc_val = (soc_val < 0) ? 0 : (soc_val > 100) ? 100 : soc_val;
-                        lv_bar_set_value(ui_SOCbar, soc_val, LV_ANIM_ON);
+                        lv_bar_set_value(ui_SOCbar, soc_val, LV_ANIM_OFF);
 
                         // Set color based on SOC range
                         lv_color_t bar_color;
