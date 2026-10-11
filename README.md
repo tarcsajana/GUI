@@ -68,6 +68,8 @@ Run `idf.py set-target esp32s3` to select the target chip.
 
 Run `idf.py -p PORT build flash monitor` to build, flash and monitor the project. A fancy animation will show up on the LCD as expected.
 
+For manual OTA publishing from Linux, run `./rebuild_and_upload.sh`. The script reconfigures, builds, and uploads `build/lvgl_porting.bin` to the `OTA` GitHub release used by the in-app update button. You can override `IDF_EXPORT_SH`, `GITHUB_REPO`, `RELEASE_TAG`, or `ASSET_PATH` through environment variables if needed.
+
 The first time you run `idf.py` for the example will cost extra time as the build system needs to address the component dependencies and downloads the missing components from registry into `managed_components` folder.
 
 (To exit the serial monitor, type ``Ctrl-]``.)
