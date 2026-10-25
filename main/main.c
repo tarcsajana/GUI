@@ -299,6 +299,7 @@ extern lv_obj_t * ui_labelbattamps;
 extern lv_obj_t * ui_labelcelltemp;
 extern lv_obj_t * ui_labelvolt;
 extern lv_obj_t * ui_wifi;
+extern lv_obj_t * ui_Label23;
 extern lv_obj_t * uic_clock_time;   // Time display label
 extern lv_obj_t * uic_clock_date;   // Date display label
 #define CONSUMPTION_SAMPLES 30  // Number of samples for rolling average
@@ -1209,11 +1210,22 @@ void app_main() {
     }
 }
 
+static void ota_set_status(const char *text)
+{
+    if (lvgl_port_lock(200)) {
+        if (ui_Label23 != NULL) {
+            lv_label_set_text(ui_Label23, text);
+        }
+        lvgl_port_unlock();
+    }
+}
+
 static void gui_ota_task(void *pvParameters)
 {
     wifi_ap_record_t ap_info;
     if (esp_wifi_sta_get_ap_info(&ap_info) != ESP_OK) {
         ESP_LOGW("OTA", "OTA aborted: WiFi not connected");
+        ota_set_status("No WiFi");
         ota_in_progress = false;
         vTaskDelete(NULL);
         return;
@@ -1221,12 +1233,14 @@ static void gui_ota_task(void *pvParameters)
 
     if (strcmp(GUI_OTA_URL, "https://example.com/gui/latest/lvgl_porting.bin") == 0) {
         ESP_LOGW("OTA", "OTA URL is placeholder. Update GUI_OTA_URL in main.c");
+        ota_set_status("No URL");
         ota_in_progress = false;
         vTaskDelete(NULL);
         return;
     }
 
     ESP_LOGI("OTA", "Starting GUI OTA from %s", GUI_OTA_URL);
+    ota_set_status("Updating...");
 
     const char *ota_username = NULL;
     const char *ota_password = NULL;
@@ -1237,12 +1251,15 @@ static void gui_ota_task(void *pvParameters)
 
     esp_http_client_config_t http_cfg = {
         .url = GUI_OTA_URL,
-        .timeout_ms = 12000,
+        .timeout_ms = 60000,
         .keep_alive_enable = true,
         .crt_bundle_attach = esp_crt_bundle_attach,
         .username = ota_username,
         .password = ota_password,
         .auth_type = (ota_password != NULL) ? HTTP_AUTH_TYPE_BASIC : HTTP_AUTH_TYPE_NONE,
+        .buffer_size = 4096,
+        .buffer_size_tx = 1024,
+        .max_redirection_count = 10,
     };
 
     esp_https_ota_config_t ota_cfg = {
@@ -1252,9 +1269,12 @@ static void gui_ota_task(void *pvParameters)
     esp_err_t err = esp_https_ota(&ota_cfg);
     if (err == ESP_OK) {
         ESP_LOGI("OTA", "OTA successful, rebooting...");
+        ota_set_status("Rebooting");
+        vTaskDelay(pdMS_TO_TICKS(500));
         esp_restart();
     } else {
         ESP_LOGE("OTA", "OTA failed: %s", esp_err_to_name(err));
+        ota_set_status("OTA fail");
     }
 
     ota_in_progress = false;
@@ -1269,8 +1289,10 @@ void trigger_firmware_ota(void)
     }
 
     ota_in_progress = true;
-    if (xTaskCreate(gui_ota_task, "gui_ota", 8192, NULL, 5, NULL) != pdPASS) {
+    ota_set_status("Starting...");
+    if (xTaskCreate(gui_ota_task, "gui_ota", 16384, NULL, 5, NULL) != pdPASS) {
         ota_in_progress = false;
+        ota_set_status("OTA fail");
         ESP_LOGE("OTA", "Failed to create OTA task");
     }
 }
