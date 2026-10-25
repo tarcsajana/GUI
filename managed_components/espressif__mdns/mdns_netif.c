@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2025 Espressif Systems (Shanghai) CO LTD
+ * SPDX-FileCopyrightText: 2025-2026 Espressif Systems (Shanghai) CO LTD
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -13,7 +13,9 @@
 #include "mdns_mem_caps.h"
 #include "mdns_utils.h"
 #include "mdns_debug.h"
+#ifdef CONFIG_MDNS_ENABLE_BROWSE
 #include "mdns_browser.h"
+#endif
 #include "mdns_netif.h"
 #include "mdns_pcb.h"
 #include "mdns_responder.h"
@@ -177,6 +179,29 @@ static esp_err_t post_custom_action(mdns_if_t mdns_if, mdns_event_actions_t even
     return ESP_OK;
 }
 
+#if defined(CONFIG_MDNS_ENABLE_BROWSE) && (CONFIG_MDNS_PREDEF_NETIF_STA || CONFIG_MDNS_PREDEF_NETIF_AP || CONFIG_MDNS_PREDEF_NETIF_ETH)
+static esp_err_t post_browse_send_by_ip_protocol_action(mdns_if_t mdns_if, mdns_ip_protocol_t ip_protocol)
+{
+    if (!mdns_priv_is_server_init() || mdns_if >= MDNS_MAX_INTERFACES) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    mdns_action_t *action = (mdns_action_t *)mdns_mem_calloc(1, sizeof(mdns_action_t));
+    if (!action) {
+        HOOK_MALLOC_FAILED;
+        return ESP_ERR_NO_MEM;
+    }
+    action->type = ACTION_BROWSE_SEND_BY_IP_PROTOCOL;
+    action->data.browse_send.interface = mdns_if;
+    action->data.browse_send.ip_protocol = ip_protocol;
+
+    if (!mdns_priv_queue_action(action)) {
+        mdns_mem_free(action);
+    }
+    return ESP_OK;
+}
+#endif
+
 /**
  * @brief  Dispatch interface changes based on system events
  */
@@ -258,10 +283,16 @@ static void handle_system_event_for_preset(void *arg, esp_event_base_t event_bas
                 case IP_EVENT_STA_GOT_IP:
                     post_enable_pcb(MDNS_IF_STA, MDNS_IP_PROTOCOL_V4);
                     post_announce_pcb(MDNS_IF_STA, MDNS_IP_PROTOCOL_V6);
+#ifdef CONFIG_MDNS_ENABLE_BROWSE
+                    post_browse_send_by_ip_protocol_action(mdns_if_from_preset(MDNS_IF_STA), MDNS_IP_PROTOCOL_V4);
+#endif
                     break;
 #if CONFIG_ETH_ENABLED && CONFIG_MDNS_PREDEF_NETIF_ETH
                 case IP_EVENT_ETH_GOT_IP:
                     post_enable_pcb(MDNS_IF_ETH, MDNS_IP_PROTOCOL_V4);
+#ifdef CONFIG_MDNS_ENABLE_BROWSE
+                    post_browse_send_by_ip_protocol_action(mdns_if_from_preset(MDNS_IF_ETH), MDNS_IP_PROTOCOL_V4);
+#endif
                     break;
 #endif
                 case IP_EVENT_GOT_IP6: {
@@ -270,9 +301,12 @@ static void handle_system_event_for_preset(void *arg, esp_event_base_t event_bas
                     if (mdns_if >= MDNS_MAX_INTERFACES) {
                         return;
                     }
-                    post_enable_pcb(mdns_if, MDNS_IP_PROTOCOL_V6);
-                    post_announce_pcb(mdns_if, MDNS_IP_PROTOCOL_V4);
-                    mdns_priv_browse_send_all(mdns_if);
+                    // mdns_if is already an internal index, not a predefined interface
+                    post_custom_action(mdns_if, MDNS_EVENT_ENABLE_IP6);
+                    post_custom_action(mdns_if, MDNS_EVENT_ANNOUNCE_IP4);
+#ifdef CONFIG_MDNS_ENABLE_BROWSE
+                    post_browse_send_by_ip_protocol_action(mdns_if, MDNS_IP_PROTOCOL_V6);
+#endif
 
                 }
                 break;
@@ -428,6 +462,6 @@ esp_err_t mdns_unregister_netif(esp_netif_t *esp_netif)
             break;
         }
     }
-    mdns_priv_service_lock();
+    mdns_priv_service_unlock();
     return err;
 }

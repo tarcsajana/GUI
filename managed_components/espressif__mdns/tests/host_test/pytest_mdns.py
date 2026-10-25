@@ -1,15 +1,26 @@
 # SPDX-FileCopyrightText: 2024-2026 Espressif Systems (Shanghai) CO LTD
 # SPDX-License-Identifier: Unlicense OR CC0-1.0
 import logging
+import subprocess
+import sys
+import time
+from pathlib import Path
 
 import pexpect
 import pytest
+from bonjour_order_responder import DEFAULTS
 from dnsfixture import DnsPythonWrapper
+from querier_responder import DEFAULTS as QUERIER_DEFAULTS
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 ipv6_enabled = False
+
+
+def _console_line(label: str, value: str) -> str:
+    """Build a line as printed by mdns_print_results (avoids flake8 E203 on f'LABEL : {x}')."""
+    return label + value
 
 
 class MdnsConsole:
@@ -29,12 +40,132 @@ class MdnsConsole:
         logger.info(f'Received from stdout: {output}')
         return output
 
+    def wait_for_output(self, expected_data, timeout=10):
+        logger.info(f'Waiting for: {expected_data}')
+        self.process.expect(expected_data, timeout=timeout)
+        output = (self.process.before or '') + (self.process.after or '')
+        logger.info(f'Captured output while waiting: {output}')
+        return output
+
+    def wait_for_browse_result(self, timeout=10):
+        """Wait until browse notifier printed the full result (A is last required field)."""
+        return self.wait_for_output(_console_line('A   : ', DEFAULTS['ipv4']), timeout=timeout)
+
+    def wait_for_browse_goodbye(self, timeout=10):
+        """Wait for Bonjour-style PTR TTL=0 removal notification (interface line then PTR)."""
+        self.wait_for_output('TTL: 0', timeout=timeout)
+        return self.wait_for_output(_console_line('PTR : ', DEFAULTS['instance']), timeout=timeout)
+
     def terminate(self):
         self.send_input('exit')
         self.get_output('Exit')
         self.process.wait()
         self.process.close()
         assert self.process.exitstatus == 0
+
+
+def _bonjour_responder_cmd(
+    srv_first: bool = False,
+    goodbye_after: int = -1,
+    unsolicited_goodbye_after: int = -1,
+) -> list[str]:
+    cmd = [
+        sys.executable,
+        str(Path(__file__).with_name('bonjour_order_responder.py')),
+        '--interface',
+        'eth0',
+        '--service',
+        DEFAULTS['service'],
+        '--proto',
+        DEFAULTS['proto'],
+    ]
+    if srv_first:
+        cmd.append('--srv-first')
+    if goodbye_after >= 0:
+        cmd.extend(['--goodbye-after', str(goodbye_after)])
+    if unsolicited_goodbye_after >= 0:
+        cmd.extend(['--unsolicited-goodbye-after', str(unsolicited_goodbye_after)])
+    return cmd
+
+
+def _run_bonjour_responder(
+    *,
+    srv_first: bool = False,
+    goodbye_after: int = -1,
+    unsolicited_goodbye_after: int = -1,
+    label: str,
+):
+    proc = subprocess.Popen(
+        _bonjour_responder_cmd(
+            srv_first=srv_first,
+            goodbye_after=goodbye_after,
+            unsolicited_goodbye_after=unsolicited_goodbye_after,
+        ),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    time.sleep(0.5)
+    # poll() stays None while the responder is still running after startup.
+    assert proc.poll() is None, f'{label} failed to start (need eth0 and port 5353?)'
+    return proc
+
+
+def _stop_bonjour_responder(proc):
+    proc.terminate()
+    try:
+        proc.wait(timeout=3)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait(timeout=3)
+
+
+def _run_querier_responder():
+    proc = subprocess.Popen(
+        [
+            sys.executable,
+            str(Path(__file__).with_name('querier_responder.py')),
+            '--interface',
+            'eth0',
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    time.sleep(0.5)
+    assert proc.poll() is None, 'Querier responder failed to start (need eth0 and port 5353?)'
+    return proc
+
+
+@pytest.fixture
+def querier_responder():
+    proc = _run_querier_responder()
+    yield proc
+    _stop_bonjour_responder(proc)
+
+
+@pytest.fixture
+def bonjour_responder():
+    proc = _run_bonjour_responder(label='Bonjour-order responder')
+    yield proc
+    _stop_bonjour_responder(proc)
+
+
+@pytest.fixture
+def bonjour_responder_srv_first():
+    proc = _run_bonjour_responder(srv_first=True, label='SRV-first responder')
+    yield proc
+    _stop_bonjour_responder(proc)
+
+
+@pytest.fixture
+def bonjour_responder_goodbye():
+    proc = _run_bonjour_responder(
+        unsolicited_goodbye_after=1,
+        label='Unsolicited-goodbye responder',
+    )
+    yield proc
+    _stop_bonjour_responder(proc)
 
 
 @pytest.fixture(scope='module')
@@ -217,6 +348,108 @@ def test_service_remove_all(mdns_console, dig_app):
     mdns_console.send_input('mdns_service_lookup _test _tcp')
     mdns_console.get_output('No results found!')
     dig_app.check_record('_test._tcp.local', query_type='PTR', expected=False)
+
+
+def _browse_v301test(mdns_console, *, reset_browse: bool = True):
+    service = DEFAULTS['service']
+    proto = DEFAULTS['proto']
+    if reset_browse:
+        mdns_console.send_input(f'mdns_browse_del {service} {proto}')
+        mdns_console.get_output('mdns>')
+    mdns_console.send_input(f'mdns_browse {service} {proto}')
+    return mdns_console.wait_for_browse_result(timeout=10)
+
+
+def test_browse_bonjour_additional_order_includes_ip(mdns_console, bonjour_responder):
+    """Bonjour order (A/AAAA before SRV) must populate browse addresses on first response."""
+    output = _browse_v301test(mdns_console)
+    assert _console_line('PTR : ', DEFAULTS['instance']) in output
+    assert _console_line('A   : ', DEFAULTS['ipv4']) in output
+    mdns_console.send_input(f"mdns_browse_del {DEFAULTS['service']} {DEFAULTS['proto']}")
+    mdns_console.get_output('mdns>')
+
+
+def test_browse_srv_first_includes_ip(mdns_console, bonjour_responder_srv_first):
+    """Control case: SRV before A/AAAA should populate browse addresses."""
+    output = _browse_v301test(mdns_console)
+    assert _console_line('PTR : ', DEFAULTS['instance']) in output
+    assert _console_line('A   : ', DEFAULTS['ipv4']) in output
+    mdns_console.send_input(f"mdns_browse_del {DEFAULTS['service']} {DEFAULTS['proto']}")
+    mdns_console.get_output('mdns>')
+
+
+def test_browse_ptr_goodbye_notifies_removal(mdns_console, bonjour_responder_goodbye):
+    """Same live browse must see normal result then unsolicited PTR TTL=0 removal."""
+    service = DEFAULTS['service']
+    proto = DEFAULTS['proto']
+    mdns_console.send_input(f'mdns_browse_del {service} {proto}')
+    mdns_console.get_output('mdns>')
+    mdns_console.send_input(f'mdns_browse {service} {proto}')
+    mdns_console.wait_for_browse_result(timeout=10)
+    output = mdns_console.wait_for_browse_goodbye(timeout=10)
+    assert _console_line('PTR : ', DEFAULTS['instance']) in output
+    mdns_console.send_input(f'mdns_browse_del {service} {proto}')
+    mdns_console.get_output('mdns>')
+
+
+def test_browse_duplicate_rejected(mdns_console, bonjour_responder):
+    """Duplicate mdns_browse_new() for the same service/proto must fail and leave the original active."""
+    service = DEFAULTS['service']
+    proto = DEFAULTS['proto']
+    mdns_console.send_input(f'mdns_browse_del {service} {proto}')
+    mdns_console.get_output('mdns>')
+    mdns_console.send_input(f'mdns_browse {service} {proto}')
+    mdns_console.wait_for_browse_result(timeout=10)
+
+    mdns_console.send_input(f'mdns_browse {service} {proto}')
+    mdns_console.get_output('Browse already exists')
+    mdns_console.get_output('Command returned non-zero error code')
+    mdns_console.get_output('mdns>')
+
+    # Original browse remains usable (delete must succeed).
+    mdns_console.send_input(f'mdns_browse_del {service} {proto}')
+    out = mdns_console.get_output('mdns>')
+    assert 'Command returned non-zero' not in out
+
+
+def test_query_a_against_peer(mdns_console, querier_responder):
+    """DUT-side sync mdns_query_a against a controlled peer (replaces test_apps QUERY_HOST)."""
+    host = QUERIER_DEFAULTS['hostname']
+    ipv4 = QUERIER_DEFAULTS['ipv4']
+    # Safe if suite already called mdns_init; required when this test runs alone.
+    mdns_console.send_input('mdns_init -h hostname')
+    mdns_console.get_output('mdns>')
+    mdns_console.send_input(f'mdns_query_a {host} -t 2000')
+    mdns_console.get_output(f'Query A: {host}.local')
+    mdns_console.get_output(ipv4)
+    mdns_console.get_output('mdns>')
+
+
+def test_query_a_async_against_peer(mdns_console, querier_responder):
+    """DUT-side async A query against a controlled peer (replaces test_apps QUERY_HOST_ASYNC)."""
+    host = QUERIER_DEFAULTS['hostname']
+    ipv4 = QUERIER_DEFAULTS['ipv4']
+    mdns_console.send_input('mdns_init -h hostname')
+    mdns_console.get_output('mdns>')
+    mdns_console.send_input(f'mdns_query_a_async {host} -t 2000')
+    mdns_console.get_output(f'Query A async: {host}.local')
+    mdns_console.get_output(f'Async query resolved to A:{ipv4}')
+    mdns_console.get_output('mdns>')
+
+
+def test_query_srv_against_peer(mdns_console, querier_responder):
+    """DUT-side mdns_query_srv against a controlled peer (replaces test_apps QUERY_SERVICE)."""
+    instance = QUERIER_DEFAULTS['instance']
+    service = QUERIER_DEFAULTS['service']
+    proto = QUERIER_DEFAULTS['proto']
+    hostname = QUERIER_DEFAULTS['hostname']
+    port = QUERIER_DEFAULTS['port']
+    mdns_console.send_input('mdns_init -h hostname')
+    mdns_console.get_output('mdns>')
+    mdns_console.send_input(f'mdns_query_srv {instance} {service} {proto} -t 2000')
+    mdns_console.get_output(f'Query SRV: {instance}.{service}.{proto}.local')
+    mdns_console.get_output(_console_line('SRV : ', f'{hostname}.local:{port}'))
+    mdns_console.get_output('mdns>')
 
 
 if __name__ == '__main__':

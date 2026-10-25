@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2015-2025 Espressif Systems (Shanghai) CO LTD
+ * SPDX-FileCopyrightText: 2015-2026 Espressif Systems (Shanghai) CO LTD
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -69,6 +69,25 @@ typedef struct {
 } mdns_txt_item_t;
 
 /**
+ * @brief   mDNS basic text item structure, with length of values
+ *          Suitable for both string and non-string items
+ *          Used in mdns_service_add_with_explicit_txt_item_value_len()
+ */
+typedef struct {
+    const char *key;                        /*!< item key name */
+    const uint8_t *value;                   /*!< item value */
+    uint8_t value_len;                /*!< item value length */
+} mdns_txt_item_with_value_len_t;
+
+/**
+ * @brief mDNS TXT item type, either regular one or with value length
+ */
+typedef enum {
+    MDNS_TXT_ITEM,
+    MDNS_TXT_ITEM_WITH_VALUE_LEN
+} mdns_txt_item_type_t;
+
+/**
  * @brief   mDNS basic subtype item structure
  *          Used in mdns_service_subtype_xxx() APIs
  */
@@ -118,7 +137,43 @@ typedef struct mdns_result_s {
 } mdns_result_t;
 
 typedef void (*mdns_query_notify_t)(mdns_search_once_t *search);
+
+/**
+ * @brief Browse result change notifier
+ *
+ * Called once for every matching browse result changed by a received response,
+ * or once for every currently cached result when a new browse is registered.
+ *
+ * The @p result is a temporary projection of the internal mDNS cache, which is only valid
+ * during the lifetime of this callback and is freed immediately after the callback returns.
+ *
+ * @warning @p result->next is always NULL. Other instances cannot be obtained from @p result.
+ *
+ * @warning If handling is deferred outside this callback, applications must make a deep copy
+ *          of @p result with all components, including strings, TXT entries, and address list.
+ *
+ * @warning This callback runs in the mDNS service task and holds the mDNS service lock.
+ *          Users must not call APIs that acquire mDNS service lock in this callback.
+ *          For example, mdns_browse_new() and mdns_browse_delete().
+ *
+ * @param result  Temporary result of the browse that changed.
+ */
 typedef void (*mdns_browse_notify_t)(mdns_result_t *result);
+
+/**
+ * @brief Hostname change notifier
+ *
+ * Called from the mDNS service task after the hostname changes.
+ * The @p hostname argument is the new hostname. It remains valid until the
+ * callback returns.
+ *
+ * @warning Do not call mDNS APIs from this callback. The callback runs while
+ *          the mDNS service is processing an action.
+ *
+ * @param hostname  The new responder hostname.
+ * @param arg       User context supplied when registering the callback.
+ */
+typedef void (*mdns_hostname_changed_cb_t)(const char *hostname, void *arg);
 
 /**
  * @brief  Initialize mDNS on given interface
@@ -149,6 +204,24 @@ void mdns_free(void);
  *     - ESP_ERR_NO_MEM memory error
  */
 esp_err_t mdns_hostname_set(const char *hostname);
+
+/**
+ * @brief Register a callback notified when the hostname changes
+ *
+ * Multiple callbacks can be registered. Registering the same callback and
+ * context more than once has no effect. Callbacks cannot be unregistered and
+ * remain registered until mdns_free() is called.
+ *
+ * @param cb   Callback to invoke when the hostname changes.
+ * @param arg  User context passed to @p cb.
+ *
+ * @return
+ *     - ESP_OK on success
+ *     - ESP_ERR_INVALID_STATE when mDNS is not initialized
+ *     - ESP_ERR_INVALID_ARG when @p cb is NULL
+ *     - ESP_ERR_NO_MEM when the callback cannot be registered
+ */
+esp_err_t mdns_register_hostname_changed_callback(mdns_hostname_changed_cb_t cb, void *arg);
 
 /**
  * @brief Get the hostname for mDNS server
@@ -283,6 +356,56 @@ esp_err_t mdns_service_add(const char *instance_name, const char *service_type, 
  */
 esp_err_t mdns_service_add_for_host(const char *instance_name, const char *service_type, const char *proto,
                                     const char *hostname, uint16_t port, mdns_txt_item_t txt[], size_t num_items);
+
+/**
+ * @brief  Add service to mDNS server
+ *
+ * @note The value length of txt items should be configured in structures
+ *
+ * @param  instance_name    instance name to set. If NULL,
+ *                          global instance name or hostname will be used.
+ *                          Note that MDNS_MULTIPLE_INSTANCE config option
+ *                          needs to be enabled for adding multiple instances
+ *                          with the same instance type.
+ * @param  service_type     service type (_http, _ftp, etc)
+ * @param  proto            service protocol (_tcp, _udp)
+ * @param  port             service port
+ * @param  txt              array of TXT data with value length (eg. {{"var", "val", 3},{"other", "2", 1}})
+ * @param  num_items        number of items in TXT data
+ *
+ * @return
+ *     - ESP_OK success
+ *     - ESP_ERR_INVALID_ARG Parameter error
+ *     - ESP_ERR_NO_MEM memory error
+ *     - ESP_FAIL failed to add service
+ */
+esp_err_t mdns_service_add_with_explicit_txt_item_value_len(const char *instance_name, const char *service_type, const char *proto, uint16_t port, mdns_txt_item_with_value_len_t txt[], size_t num_items);
+
+/**
+ * @brief  Add service to mDNS server with a delegated hostname
+ *
+ * @note The value length of txt items should be configured in structures
+ *
+ * @param  instance_name    instance name to set. If NULL,
+ *                          global instance name or hostname will be used
+ *                          Note that MDNS_MULTIPLE_INSTANCE config option
+ *                          needs to be enabled for adding multiple instances
+ *                          with the same instance type.
+ * @param  service_type     service type (_http, _ftp, etc)
+ * @param  proto            service protocol (_tcp, _udp)
+ * @param  hostname         service hostname. If NULL, local hostname will be used.
+ * @param  port             service port
+ * @param  txt              array of TXT data with value length (eg. {{"var", "val", 3},{"other", "2", 1}})
+ * @param  num_items        number of items in TXT data
+ *
+ * @return
+ *     - ESP_OK success
+ *     - ESP_ERR_INVALID_ARG Parameter error
+ *     - ESP_ERR_NO_MEM memory error
+ *     - ESP_FAIL failed to add service
+ */
+esp_err_t mdns_service_add_for_host_with_explicit_txt_item_value_len(const char *instance_name, const char *service_type, const char *proto,
+                                                                     const char *hostname, uint16_t port, mdns_txt_item_with_value_len_t txt[], size_t num_items);
 
 /**
  * @brief  Check whether a service has been added.
@@ -447,6 +570,45 @@ esp_err_t mdns_service_txt_set(const char *service_type, const char *proto, mdns
  */
 esp_err_t mdns_service_txt_set_for_host(const char *instance, const char *service_type, const char *proto, const char *hostname,
                                         mdns_txt_item_t txt[], uint8_t num_items);
+
+/**
+ * @brief  Replace all TXT items for service
+ *
+ * @note The value length of txt items should be configured in structures
+ *
+ * @param  service_type service type (_http, _ftp, etc)
+ * @param  proto        service protocol (_tcp, _udp)
+ * @param  txt          array of TXT data with value length (eg. {{"var", "val", 3},{"other", "2", 1}})
+ * @param  num_items    number of items in TXT data
+ *
+ * @return
+ *     - ESP_OK success
+ *     - ESP_ERR_INVALID_ARG Parameter error
+ *     - ESP_ERR_NOT_FOUND Service not found
+ *     - ESP_ERR_NO_MEM memory error
+ */
+esp_err_t mdns_service_txt_set_with_explicit_txt_item_value_len(const char *service_type, const char *proto, mdns_txt_item_with_value_len_t txt[], uint8_t num_items);
+
+/**
+ * @brief  Replace all TXT items for service with hostname
+ *
+ * @note The value length of txt items should be configured in structures
+ *
+ * @param  instance     instance name
+ * @param  service_type service type (_http, _ftp, etc)
+ * @param  proto        service protocol (_tcp, _udp)
+ * @param  hostname     service hostname. If NULL, local hostname will be used.
+ * @param  txt          array of TXT data with value length (eg. {{"var", "val", 3},{"other", "2", 1}})
+ * @param  num_items    number of items in TXT data
+ *
+ * @return
+ *     - ESP_OK success
+ *     - ESP_ERR_INVALID_ARG Parameter error
+ *     - ESP_ERR_NOT_FOUND Service not found
+ *     - ESP_ERR_NO_MEM memory error
+ */
+esp_err_t mdns_service_txt_set_for_host_with_explicit_txt_item_value_len(const char *instance, const char *service_type, const char *proto, const char *hostname,
+                                                                         mdns_txt_item_with_value_len_t txt[], uint8_t num_items);
 
 /**
  * @brief  Set/Add TXT item for service TXT record
@@ -810,6 +972,25 @@ esp_err_t mdns_lookup_delegated_service(const char *instance, const char *servic
                                         mdns_result_t **result);
 
 /**
+ * @brief Look up delegated services with a particular subtype.
+ *
+ * @param  instance         instance name (NULL for uncertain instance)
+ * @param  service_type     service type (_http, _ftp, etc)
+ * @param  proto            service protocol (_tcp, _udp)
+ * @param  subtype          service subtype (must not be NULL or empty)
+ * @param  max_results      maximum results to be collected
+ * @param  result           pointer to the result of the search
+ *
+ * @return
+ *     - ESP_OK success
+ *     - ESP_ERR_INVALID_STATE  mDNS is not running
+ *     - ESP_ERR_NO_MEM         memory error
+ *     - ESP_ERR_INVALID_ARG    parameter error
+ */
+esp_err_t mdns_lookup_delegated_service_with_subtype(const char *instance, const char *service_type, const char *proto,
+                                                     const char *subtype, size_t max_results, mdns_result_t **result);
+
+/**
  * @brief Look up self hosted services.
  *
  * @param  instance         instance name (NULL for uncertain instance)
@@ -826,6 +1007,25 @@ esp_err_t mdns_lookup_delegated_service(const char *instance, const char *servic
  */
 esp_err_t mdns_lookup_selfhosted_service(const char *instance, const char *service_type, const char *proto, size_t max_results,
                                          mdns_result_t **result);
+
+/**
+ * @brief Look up self hosted services with a particular subtype.
+ *
+ * @param  instance         instance name (NULL for uncertain instance)
+ * @param  service_type     service type (_http, _ftp, etc)
+ * @param  proto            service protocol (_tcp, _udp)
+ * @param  subtype          service subtype (must not be NULL or empty)
+ * @param  max_results      maximum results to be collected
+ * @param  result           pointer to the result of the search
+ *
+ * @return
+ *     - ESP_OK success
+ *     - ESP_ERR_INVALID_STATE  mDNS is not running
+ *     - ESP_ERR_NO_MEM         memory error
+ *     - ESP_ERR_INVALID_ARG    parameter error
+ */
+esp_err_t mdns_lookup_selfhosted_service_with_subtype(const char *instance, const char *service_type, const char *proto,
+                                                      const char *subtype, size_t max_results, mdns_result_t **result);
 
 /**
  * @brief  Query mDNS for A record
@@ -908,14 +1108,27 @@ esp_err_t mdns_unregister_netif(esp_netif_t *esp_netif);
  */
 esp_err_t mdns_netif_action(esp_netif_t *esp_netif, mdns_event_actions_t event_action);
 
+#ifdef CONFIG_MDNS_ENABLE_BROWSE
 /**
  * @brief   Browse mDNS for a service `_service._proto`.
  *
  * @param service  Pointer to the `_service` which will be browsed.
  * @param proto    Pointer to the `_proto` which will be browsed.
- * @param notifier The callback which will be called when the browsing service changed.
+ * @param notifier The callback which will be called when a browse result changes.
+ *                 See @ref mdns_browse_notify_t for callback semantics and limitations.
  * @return mdns_browse_t pointer to new browse object if initiated successfully.
  *         NULL otherwise.
+ *
+ * @note If matching services already present in the internal mDNS cache,
+ *       the notifier will be called once for each cached service after this browse
+ *       is registered.
+ *
+ * @note The notifier receives a temporary result that is valid only during the callback.
+ *       See @ref mdns_browse_notify_t for ownership and lifetime details.
+ *
+ * @note Available when CONFIG_MDNS_ENABLE_BROWSE is enabled (default); can be disabled to reduce binary size.
+ *
+ * @warning This function acquires the mDNS service lock and must not be called from the mDNS service task.
  */
 mdns_browse_t *mdns_browse_new(const char *service, const char *proto, mdns_browse_notify_t notifier);
 
@@ -927,8 +1140,13 @@ mdns_browse_t *mdns_browse_new(const char *service, const char *proto, mdns_brow
  *     - ESP_OK                 success.
  *     - ESP_ERR_FAIL           mDNS is not running or the browsing of `_service._proto` is never started.
  *     - ESP_ERR_NO_MEM         memory error.
+ *
+ * @note Available when CONFIG_MDNS_ENABLE_BROWSE is enabled (default); can be disabled to reduce binary size.
+ *
+ * @warning This function acquires the mDNS service lock and must not be called from the mDNS service task.
  */
 esp_err_t mdns_browse_delete(const char *service, const char *proto);
+#endif /* CONFIG_MDNS_ENABLE_BROWSE */
 
 #ifdef __cplusplus
 }

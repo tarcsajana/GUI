@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2015-2025 Espressif Systems (Shanghai) CO LTD
+ * SPDX-FileCopyrightText: 2015-2026 Espressif Systems (Shanghai) CO LTD
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -103,6 +103,38 @@ static void mdns_dbg_printf(const char *fmt, ...)
 #define mdns_dbg_flush()
 #endif
 
+static void dbg_print_name_and_type(const char *prefix, const mdns_name_t *name, uint16_t type)
+{
+    if (type == MDNS_TYPE_A) {
+        dbg_printf("%s%s.%s. A ", prefix, name->host, name->domain);
+    } else if (type == MDNS_TYPE_AAAA) {
+        dbg_printf("%s%s.%s. AAAA ", prefix, name->host, name->domain);
+    } else if (type == MDNS_TYPE_OPT) {
+        dbg_printf("%s. OPT ", prefix);
+    } else {
+        const char *type_name = NULL;
+        if (type == MDNS_TYPE_PTR) {
+            type_name = "PTR";
+        } else if (type == MDNS_TYPE_SRV) {
+            type_name = "SRV";
+        } else if (type == MDNS_TYPE_TXT) {
+            type_name = "TXT";
+        } else if (type == MDNS_TYPE_NSEC) {
+            type_name = "NSEC";
+        } else if (type == MDNS_TYPE_ANY) {
+            type_name = "ANY";
+        }
+
+        dbg_printf("%s%s%s%s%s.%s.%s. ", prefix, name->host, name->host[0] ? "." : "",
+                   name->sub ? "_sub." : "", name->service, name->proto, name->domain);
+        if (type_name) {
+            dbg_printf("%s ", type_name);
+        } else {
+            dbg_printf("%04X ", type);
+        }
+    }
+}
+
 void static dbg_packet(const uint8_t *data, size_t len)
 {
     static mdns_name_t n;
@@ -153,23 +185,7 @@ void static dbg_packet(const uint8_t *data, size_t len)
             if (unicast) {
                 dbg_printf("*U* ");
             }
-            if (type == MDNS_TYPE_PTR) {
-                dbg_printf("%s.%s%s.%s.%s. PTR ", name->host, name->sub ? "_sub." : "", name->service, name->proto, name->domain);
-            } else if (type == MDNS_TYPE_SRV) {
-                dbg_printf("%s.%s%s.%s.%s. SRV ", name->host, name->sub ? "_sub." : "", name->service, name->proto, name->domain);
-            } else if (type == MDNS_TYPE_TXT) {
-                dbg_printf("%s.%s%s.%s.%s. TXT ", name->host, name->sub ? "_sub." : "", name->service, name->proto, name->domain);
-            } else if (type == MDNS_TYPE_A) {
-                dbg_printf("%s.%s. A ", name->host, name->domain);
-            } else if (type == MDNS_TYPE_AAAA) {
-                dbg_printf("%s.%s. AAAA ", name->host, name->domain);
-            } else if (type == MDNS_TYPE_NSEC) {
-                dbg_printf("%s.%s%s.%s.%s. NSEC ", name->host, name->sub ? "_sub." : "", name->service, name->proto, name->domain);
-            } else if (type == MDNS_TYPE_ANY) {
-                dbg_printf("%s.%s%s.%s.%s. ANY ", name->host, name->sub ? "_sub." : "", name->service, name->proto, name->domain);
-            } else {
-                dbg_printf("%s.%s%s.%s.%s. %04X ", name->host, name->sub ? "_sub." : "", name->service, name->proto, name->domain, type);
-            }
+            dbg_print_name_and_type("", name, type);
 
             if (mdns_class == 0x0001) {
                 dbg_printf("IN");
@@ -191,6 +207,11 @@ void static dbg_packet(const uint8_t *data, size_t len)
                 break;
             }
 
+            if (content + MDNS_LEN_OFFSET + 1 >= data + len) {
+                // malformed packet, RR header (TYPE/CLASS/TTL/LEN) would read past the buffer
+                dbg_printf("ERROR: truncated RR header\n");
+                break;
+            }
             uint16_t type = mdns_utils_read_u16(content, MDNS_TYPE_OFFSET);
             uint16_t mdns_class = mdns_utils_read_u16(content, MDNS_CLASS_OFFSET);
             uint32_t ttl = mdns_utils_read_u32(content, MDNS_TTL_OFFSET);
@@ -222,25 +243,7 @@ void static dbg_packet(const uint8_t *data, size_t len)
                 dbg_printf("    A");
             }
 
-            if (type == MDNS_TYPE_PTR) {
-                dbg_printf(": %s%s%s.%s.%s. PTR ", name->host, name->host[0] ? "." : "", name->service, name->proto, name->domain);
-            } else if (type == MDNS_TYPE_SRV) {
-                dbg_printf(": %s.%s.%s.%s. SRV ", name->host, name->service, name->proto, name->domain);
-            } else if (type == MDNS_TYPE_TXT) {
-                dbg_printf(": %s.%s.%s.%s. TXT ", name->host, name->service, name->proto, name->domain);
-            } else if (type == MDNS_TYPE_A) {
-                dbg_printf(": %s.%s. A ", name->host, name->domain);
-            } else if (type == MDNS_TYPE_AAAA) {
-                dbg_printf(": %s.%s. AAAA ", name->host, name->domain);
-            } else if (type == MDNS_TYPE_NSEC) {
-                dbg_printf(": %s.%s.%s.%s. NSEC ", name->host, name->service, name->proto, name->domain);
-            } else if (type == MDNS_TYPE_ANY) {
-                dbg_printf(": %s.%s.%s.%s. ANY ", name->host, name->service, name->proto, name->domain);
-            } else if (type == MDNS_TYPE_OPT) {
-                dbg_printf(": . OPT ");
-            } else {
-                dbg_printf(": %s.%s.%s.%s. %04X ", name->host, name->service, name->proto, name->domain, type);
-            }
+            dbg_print_name_and_type(": ", name, type);
 
             if (mdns_class == 0x0001) {
                 dbg_printf("IN ");
@@ -253,13 +256,20 @@ void static dbg_packet(const uint8_t *data, size_t len)
             dbg_printf("%" PRIu32, ttl);
             dbg_printf("[%u] ", data_len);
             if (type == MDNS_TYPE_PTR) {
-                if (!mdns_utils_parse_fqdn(data, data_ptr, name, len)) {
+                size_t rdata_bound = (size_t)(data_ptr + data_len - data);
+                if (!mdns_utils_parse_fqdn(data, data_ptr, name, rdata_bound)) {
                     dbg_printf("ERROR: parse PTR\n");
                     continue;
                 }
                 dbg_printf("%s.%s.%s.%s.\n", name->host, name->service, name->proto, name->domain);
             } else if (type == MDNS_TYPE_SRV) {
-                if (!mdns_utils_parse_fqdn(data, data_ptr + MDNS_SRV_FQDN_OFFSET, name, len)) {
+                // SRV fixed fields are priority/weight/port (6 bytes) before the target FQDN
+                if (data_len < MDNS_SRV_FQDN_OFFSET) {
+                    dbg_printf("ERROR: truncated SRV\n");
+                    continue;
+                }
+                size_t rdata_bound = (size_t)(data_ptr + data_len - data);
+                if (!mdns_utils_parse_fqdn(data, data_ptr + MDNS_SRV_FQDN_OFFSET, name, rdata_bound)) {
                     dbg_printf("ERROR: parse SRV\n");
                     continue;
                 }
@@ -288,10 +298,18 @@ void static dbg_packet(const uint8_t *data, size_t len)
                 }
                 dbg_printf("\n");
             } else if (type == MDNS_TYPE_AAAA) {
-                esp_ip6_addr_t ip6;
-                memcpy(&ip6, data_ptr, sizeof(esp_ip6_addr_t));
+                if (data_len < MDNS_ANSWER_AAAA_SIZE) {
+                    dbg_printf("ERROR: truncated AAAA\n");
+                    continue;
+                }
+                esp_ip6_addr_t ip6 = {0};
+                memcpy(&ip6.addr, data_ptr, MDNS_ANSWER_AAAA_SIZE);
                 dbg_printf(IPV6STR "\n", IPV62STR(ip6));
             } else if (type == MDNS_TYPE_A) {
+                if (data_len < sizeof(esp_ip4_addr_t)) {
+                    dbg_printf("ERROR: truncated A\n");
+                    continue;
+                }
                 esp_ip4_addr_t ip;
                 memcpy(&ip, data_ptr, sizeof(esp_ip4_addr_t));
                 dbg_printf(IPSTR "\n", IP2STR(&ip));
@@ -301,6 +319,11 @@ void static dbg_packet(const uint8_t *data, size_t len)
                 if (new_ptr) {
                     dbg_printf("%s.%s.%s.%s. ", name->host, name->service, name->proto, name->domain);
                     size_t diff = new_ptr - old_ptr;
+                    if (diff > data_len) {
+                        // FQDN parsed past the record boundary; avoid underflowing data_len
+                        dbg_printf("ERROR: parse NSEC\n");
+                        continue;
+                    }
                     data_len -= diff;
                     data_ptr = new_ptr;
                 }
@@ -310,6 +333,11 @@ void static dbg_packet(const uint8_t *data, size_t len)
                 }
                 dbg_printf("\n");
             } else if (type == MDNS_TYPE_OPT) {
+                // OPT option header is code + length (4 bytes) before option data
+                if (data_len < 4) {
+                    dbg_printf("ERROR: truncated OPT\n");
+                    continue;
+                }
                 uint16_t opCode = mdns_utils_read_u16(data_ptr, 0);
                 uint16_t opLen = mdns_utils_read_u16(data_ptr, 2);
                 dbg_printf(" Code: %04x Data[%u]:", opCode, opLen);
@@ -364,6 +392,7 @@ void mdns_debug_rx_packet(mdns_rx_packet_t *packet, const uint8_t* data, uint16_
     mdns_dbg_flush();
 }
 
+#ifdef CONFIG_MDNS_ENABLE_BROWSE
 static void dbg_printf_result(mdns_result_t *r_t)
 {
     mdns_ip_addr_t *r_a = NULL;
@@ -414,3 +443,4 @@ void mdns_debug_printf_browse_result_all(mdns_result_t *r_t)
     }
     mdns_dbg_flush();
 }
+#endif /* CONFIG_MDNS_ENABLE_BROWSE */

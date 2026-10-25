@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2015-2025 Espressif Systems (Shanghai) CO LTD
+ * SPDX-FileCopyrightText: 2015-2026 Espressif Systems (Shanghai) CO LTD
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -16,8 +16,15 @@
 #include "mdns_pcb.h"
 #include "mdns_service.h"
 
+typedef struct mdns_hostname_changed_callback_s {
+    mdns_hostname_changed_cb_t cb;
+    void *arg;
+    struct mdns_hostname_changed_callback_s *next;
+} mdns_hostname_changed_callback_t;
+
 typedef struct mdns_server_s {
     const char *hostname;
+    mdns_hostname_changed_callback_t *hostname_changed_cbs;
     const char *instance;
     mdns_srv_item_t *services;
     mdns_host_item_t *host_list;
@@ -59,6 +66,17 @@ static void free_delegated_hostnames(void)
     s_server->host_list = NULL;
 }
 
+static void free_hostname_changed_callbacks(void)
+{
+    mdns_hostname_changed_callback_t *callback = s_server->hostname_changed_cbs;
+    while (callback != NULL) {
+        mdns_hostname_changed_callback_t *next = callback->next;
+        mdns_mem_free(callback);
+        callback = next;
+    }
+    s_server->hostname_changed_cbs = NULL;
+}
+
 void mdns_priv_responder_free(void)
 {
     if (s_server->action_sema != NULL) {
@@ -71,6 +89,7 @@ void mdns_priv_responder_free(void)
     mdns_mem_free((char *)s_server->hostname);
     mdns_mem_free((char *)s_server->instance);
     free_delegated_hostnames();
+    free_hostname_changed_callbacks();
     mdns_mem_free(s_server);
     s_server = NULL;
 }
@@ -98,11 +117,19 @@ mdns_host_item_t *mdns_priv_get_self_host(void)
 void mdns_priv_set_global_hostname(const char *hostname)
 {
     if (s_server) {
+        bool hostname_changed = s_server->hostname != hostname &&
+                                (!s_server->hostname || !hostname || strcmp(s_server->hostname, hostname) != 0);
         if (s_server->hostname) {
             mdns_mem_free((void *)s_server->hostname);
         }
         s_server->hostname = hostname;
         s_server->self_host.hostname = hostname;
+        if (hostname_changed) {
+            for (mdns_hostname_changed_callback_t *callback = s_server->hostname_changed_cbs;
+                    callback != NULL; callback = callback->next) {
+                callback->cb(hostname, callback->arg);
+            }
+        }
     }
 }
 
@@ -260,36 +287,61 @@ void mdns_priv_restart_all_pcbs(void)
 }
 
 /**
- * @brief  creates/allocates new text item list
+ * @brief  Base function that creates/allocates new text item list
  * @param  num_items     service number of txt items or 0
  * @param  txt           service txt items array or NULL
+ * @param  type          enum presenting provided txt item type
  *
  * @return pointer to the linked txt item list or NULL
  */
-static mdns_txt_linked_item_t *allocate_txt(size_t num_items, mdns_txt_item_t txt[])
+static mdns_txt_linked_item_t *allocate_txt_base(size_t num_items, const void* txt, mdns_txt_item_type_t type)
 {
+    const mdns_txt_item_t *txt_normal = NULL;
+    const mdns_txt_item_with_value_len_t *txt_with_len = NULL;
+    if (type == MDNS_TXT_ITEM) {
+        txt_normal = txt;
+    } else {
+        txt_with_len = txt;
+    }
+
     mdns_txt_linked_item_t *new_txt = NULL;
     size_t i = 0;
     if (num_items) {
         for (i = 0; i < num_items; i++) {
+            const char *key = NULL;
+            const char *value = NULL;
+            uint8_t value_len = 0;
+
+            if (type == MDNS_TXT_ITEM) {
+                key = txt_normal[i].key;
+                value = txt_normal[i].value;
+                value_len = value ? strlen(value) : 0;
+            } else {
+                key = txt_with_len[i].key;
+                value = (char *)txt_with_len[i].value;
+                value_len = value ? txt_with_len[i].value_len : 0;
+            }
+
             mdns_txt_linked_item_t *new_item = (mdns_txt_linked_item_t *)mdns_mem_malloc(sizeof(mdns_txt_linked_item_t));
             if (!new_item) {
                 HOOK_MALLOC_FAILED;
                 break;
             }
-            new_item->key = mdns_mem_strdup(txt[i].key);
+            new_item->key = mdns_mem_strdup(key);
             if (!new_item->key) {
                 mdns_mem_free(new_item);
                 break;
             }
-            if (txt[i].value) {
-                new_item->value = mdns_mem_strdup(txt[i].value);
+            if (value) {
+                new_item->value = (char *)mdns_mem_malloc(value_len + 1);
                 if (!new_item->value) {
                     mdns_mem_free((char *)new_item->key);
                     mdns_mem_free(new_item);
                     break;
                 }
-                new_item->value_len = strlen(new_item->value);
+                memcpy(new_item->value, value, value_len);
+                new_item->value[value_len] = '\0';
+                new_item->value_len = value_len;
             } else {
                 new_item->value = NULL;
                 new_item->value_len = 0;
@@ -318,7 +370,7 @@ static void free_linked_txt(mdns_txt_linked_item_t *txt)
 }
 
 /**
- * @brief  creates/allocates new service
+ * @brief  Base function that creates/allocates new service
  * @param  service       service type
  * @param  proto         service proto
  * @param  hostname      service hostname
@@ -326,12 +378,12 @@ static void free_linked_txt(mdns_txt_linked_item_t *txt)
  * @param  instance      service instance
  * @param  num_items     service number of txt items or 0
  * @param  txt           service txt items array or NULL
- *
+ * @param  txt_item_type enum presenting provided txt item type
  * @return pointer to the service or NULL on error
  */
-static mdns_service_t *create_service(const char *service, const char *proto, const char *hostname,
-                                      uint16_t port, const char *instance, size_t num_items,
-                                      mdns_txt_item_t txt[])
+static mdns_service_t *create_service_base(const char *service, const char *proto, const char *hostname,
+                                           uint16_t port, const char *instance, size_t num_items,
+                                           const void* txt, mdns_txt_item_type_t txt_item_type)
 {
     mdns_service_t *s = (mdns_service_t *)mdns_mem_calloc(1, sizeof(mdns_service_t));
     if (!s) {
@@ -339,7 +391,7 @@ static mdns_service_t *create_service(const char *service, const char *proto, co
         return NULL;
     }
 
-    mdns_txt_linked_item_t *new_txt = allocate_txt(num_items, txt);
+    mdns_txt_linked_item_t *new_txt = allocate_txt_base(num_items, txt, txt_item_type);
     if (num_items && new_txt == NULL) {
         goto fail;
     }
@@ -526,9 +578,7 @@ void mdns_priv_responder_action(mdns_action_t *action, mdns_action_subtype_t typ
         case ACTION_HOSTNAME_SET:
             send_bye_all_pcbs_no_instance(true);
             mdns_priv_remap_self_service_hostname(s_server->hostname, action->data.hostname_set.hostname);
-            mdns_mem_free((char *)s_server->hostname);
-            s_server->hostname = action->data.hostname_set.hostname;
-            s_server->self_host.hostname = action->data.hostname_set.hostname;
+            mdns_priv_set_global_hostname(action->data.hostname_set.hostname);
             mdns_priv_restart_all_pcbs();
             xSemaphoreGive(s_server->action_sema);
             break;
@@ -615,6 +665,38 @@ esp_err_t mdns_hostname_set(const char *hostname)
         return ESP_ERR_NO_MEM;
     }
     xSemaphoreTake(s_server->action_sema, portMAX_DELAY);
+    return ESP_OK;
+}
+
+esp_err_t mdns_register_hostname_changed_callback(mdns_hostname_changed_cb_t cb, void *arg)
+{
+    if (!s_server) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    if (!cb) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    mdns_priv_service_lock();
+    for (mdns_hostname_changed_callback_t *callback = s_server->hostname_changed_cbs;
+            callback != NULL; callback = callback->next) {
+        if (callback->cb == cb && callback->arg == arg) {
+            mdns_priv_service_unlock();
+            return ESP_OK;
+        }
+    }
+
+    mdns_hostname_changed_callback_t *callback = mdns_mem_malloc(sizeof(*callback));
+    if (!callback) {
+        HOOK_MALLOC_FAILED;
+        mdns_priv_service_unlock();
+        return ESP_ERR_NO_MEM;
+    }
+    callback->cb = cb;
+    callback->arg = arg;
+    callback->next = s_server->hostname_changed_cbs;
+    s_server->hostname_changed_cbs = callback;
+    mdns_priv_service_unlock();
     return ESP_OK;
 }
 
@@ -764,8 +846,8 @@ esp_err_t mdns_instance_name_set(const char *instance)
     return ESP_OK;
 }
 
-esp_err_t mdns_service_add_for_host(const char *instance, const char *service, const char *proto, const char *host,
-                                    uint16_t port, mdns_txt_item_t txt[], size_t num_items)
+static esp_err_t mdns_service_add_for_host_base(const char *instance, const char *service, const char *proto, const char *host,
+                                                uint16_t port, void* txt, size_t num_items, mdns_txt_item_type_t txt_item_type)
 {
     if (!s_server || mdns_utils_str_null_or_empty(service) || mdns_utils_str_null_or_empty(proto) || !s_server->hostname) {
         return ESP_ERR_INVALID_ARG;
@@ -782,7 +864,7 @@ esp_err_t mdns_service_add_for_host(const char *instance, const char *service, c
     mdns_srv_item_t *item = mdns_utils_get_service_item_instance(instance, service, proto, hostname);
     ESP_GOTO_ON_FALSE(!item, ESP_ERR_INVALID_ARG, err, TAG, "Service already exists");
 
-    s = create_service(service, proto, hostname, port, instance, num_items, txt);
+    s = create_service_base(service, proto, hostname, port, instance, num_items, txt, txt_item_type);
     ESP_GOTO_ON_FALSE(s, ESP_ERR_NO_MEM, err, TAG, "Cannot create service: Out of memory");
 
     item = (mdns_srv_item_t *)mdns_mem_malloc(sizeof(mdns_srv_item_t));
@@ -806,6 +888,12 @@ err:
     return ret;
 }
 
+esp_err_t mdns_service_add_for_host(const char *instance, const char *service, const char *proto, const char *host,
+                                    uint16_t port, mdns_txt_item_t txt[], size_t num_items)
+{
+    return mdns_service_add_for_host_base(instance, service, proto, host, port, txt, num_items, MDNS_TXT_ITEM);
+}
+
 esp_err_t mdns_service_add(const char *instance, const char *service, const char *proto, uint16_t port,
                            mdns_txt_item_t txt[], size_t num_items)
 {
@@ -813,6 +901,21 @@ esp_err_t mdns_service_add(const char *instance, const char *service, const char
         return ESP_ERR_INVALID_STATE;
     }
     return mdns_service_add_for_host(instance, service, proto, NULL, port, txt, num_items);
+}
+
+esp_err_t mdns_service_add_for_host_with_explicit_txt_item_value_len(const char *instance, const char *service, const char *proto, const char *host,
+                                                                     uint16_t port, mdns_txt_item_with_value_len_t txt[], size_t num_items)
+{
+    return mdns_service_add_for_host_base(instance, service, proto, host, port, txt, num_items, MDNS_TXT_ITEM_WITH_VALUE_LEN);
+}
+
+esp_err_t mdns_service_add_with_explicit_txt_item_value_len(const char *instance, const char *service, const char *proto, uint16_t port,
+                                                            mdns_txt_item_with_value_len_t txt[], size_t num_items)
+{
+    if (!s_server) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    return mdns_service_add_for_host_with_explicit_txt_item_value_len(instance, service, proto, NULL, port, txt, num_items);
 }
 
 bool mdns_service_exists(const char *service_type, const char *proto, const char *hostname)
@@ -863,13 +966,16 @@ static mdns_txt_item_t *copy_txt_items(mdns_txt_linked_item_t *items, uint8_t **
         memcpy(key, tmp->key, key_len);
         key[key_len] = 0;
         ret[ret_index].key = key;
-        char *value = (char *)mdns_mem_malloc(tmp->value_len + 1);
-        if (!value) {
-            HOOK_MALLOC_FAILED;
-            goto handle_error;
+        char *value = NULL;
+        if (tmp->value) {
+            value = (char *)mdns_mem_malloc(tmp->value_len + 1);
+            if (!value) {
+                HOOK_MALLOC_FAILED;
+                goto handle_error;
+            }
+            memcpy(value, tmp->value, tmp->value_len);
+            value[tmp->value_len] = 0;
         }
-        memcpy(value, tmp->value, tmp->value_len);
-        value[tmp->value_len] = 0;
         ret[ret_index].value = value;
         (*txt_value_len)[ret_index] = tmp->value_len;
         ret_index++;
@@ -899,7 +1005,21 @@ static mdns_ip_addr_t *copy_delegated_host_address_list(char *hostname)
     return NULL;
 }
 
-static mdns_result_t *lookup_service(const char *instance, const char *service, const char *proto, size_t max_results, bool selfhost)
+static bool service_has_subtype(const mdns_service_t *service, const char *subtype)
+{
+    if (!subtype) {
+        return true;
+    }
+    for (const mdns_subtype_t *item = service->subtype; item; item = item->next) {
+        if (!strcasecmp(item->subtype, subtype)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static mdns_result_t *lookup_service(const char *instance, const char *service, const char *proto, const char *subtype,
+                                     size_t max_results, bool selfhost)
 {
     if (mdns_utils_str_null_or_empty(service) || mdns_utils_str_null_or_empty(proto)) {
         return NULL;
@@ -916,7 +1036,7 @@ static mdns_result_t *lookup_service(const char *instance, const char *service, 
         bool is_service_selfhosted = !mdns_utils_str_null_or_empty(s_server->hostname) && !strcasecmp(s_server->hostname, srv->hostname);
         bool is_service_delegated = mdns_utils_str_null_or_empty(s_server->hostname) || strcasecmp(s_server->hostname, srv->hostname);
         if ((selfhost && is_service_selfhosted) || (!selfhost && is_service_delegated)) {
-            if (!strcasecmp(srv->service, service) && !strcasecmp(srv->proto, proto) &&
+            if (!strcasecmp(srv->service, service) && !strcasecmp(srv->proto, proto) && service_has_subtype(srv, subtype) &&
                     (mdns_utils_str_null_or_empty(instance) || mdns_utils_instance_name_match(srv->instance, instance))) {
                 mdns_result_t *item = (mdns_result_t *)mdns_mem_malloc(sizeof(mdns_result_t));
                 if (!item) {
@@ -1005,8 +1125,8 @@ esp_err_t mdns_service_port_set(const char *service, const char *proto, uint16_t
     return mdns_service_port_set_for_host(NULL, service, proto, NULL, port);
 }
 
-esp_err_t mdns_service_txt_set_for_host(const char *instance, const char *service, const char *proto, const char *host,
-                                        mdns_txt_item_t txt_items[], uint8_t num_items)
+static esp_err_t mdns_service_txt_set_for_host_base(const char *instance, const char *service, const char *proto, const char *host,
+                                                    void* txt_items, uint8_t num_items, mdns_txt_item_type_t txt_item_type)
 {
     mdns_priv_service_lock();
     esp_err_t ret = ESP_OK;
@@ -1018,10 +1138,8 @@ esp_err_t mdns_service_txt_set_for_host(const char *instance, const char *servic
 
     mdns_txt_linked_item_t *new_txt = NULL;
     if (num_items) {
-        new_txt = allocate_txt(num_items, txt_items);
-        if (!new_txt) {
-            return ESP_ERR_NO_MEM;
-        }
+        new_txt = allocate_txt_base(num_items, txt_items, txt_item_type);
+        ESP_GOTO_ON_FALSE(new_txt, ESP_ERR_NO_MEM, err, TAG, "Fails to allocate linked txt items list");
     }
     mdns_service_t *srv = s->service;
     mdns_txt_linked_item_t *txt = srv->txt;
@@ -1035,12 +1153,32 @@ err:
     return ret;
 }
 
+esp_err_t mdns_service_txt_set_for_host(const char *instance, const char *service, const char *proto, const char *host,
+                                        mdns_txt_item_t txt_items[], uint8_t num_items)
+{
+    return mdns_service_txt_set_for_host_base(instance, service, proto, host, txt_items, num_items, MDNS_TXT_ITEM);
+}
+
 esp_err_t mdns_service_txt_set(const char *service, const char *proto, mdns_txt_item_t txt[], uint8_t num_items)
 {
     if (!s_server) {
         return ESP_ERR_INVALID_STATE;
     }
     return mdns_service_txt_set_for_host(NULL, service, proto, NULL, txt, num_items);
+}
+
+esp_err_t mdns_service_txt_set_for_host_with_explicit_txt_item_value_len(const char *instance, const char *service, const char *proto, const char *host,
+                                                                         mdns_txt_item_with_value_len_t txt_items[], uint8_t num_items)
+{
+    return mdns_service_txt_set_for_host_base(instance, service, proto, host, txt_items, num_items, MDNS_TXT_ITEM_WITH_VALUE_LEN);
+}
+
+esp_err_t mdns_service_txt_set_with_explicit_txt_item_value_len(const char *service, const char *proto, mdns_txt_item_with_value_len_t txt[], uint8_t num_items)
+{
+    if (!s_server) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    return mdns_service_txt_set_for_host_with_explicit_txt_item_value_len(NULL, service, proto, NULL, txt, num_items);
 }
 
 esp_err_t mdns_service_txt_item_set_for_host_with_explicit_value_len(const char *instance, const char *service, const char *proto,
@@ -1058,10 +1196,11 @@ esp_err_t mdns_service_txt_item_set_for_host_with_explicit_value_len(const char 
     ESP_GOTO_ON_FALSE(s, ESP_ERR_NOT_FOUND, err, TAG, "Service doesn't exist");
 
     mdns_service_t *srv = s->service;
-    if (value_len > 0) {
-        value = (char *) mdns_mem_malloc(value_len);
+    if (value_arg) {
+        value = (char *) mdns_mem_malloc(value_len + 1);
         ESP_GOTO_ON_FALSE(value, ESP_ERR_NO_MEM, out_of_mem, TAG, "Out of memory");
         memcpy(value, value_arg, value_len);
+        value[value_len] = '\0';
     } else {
         value_len = 0;
     }
@@ -1538,7 +1677,23 @@ esp_err_t mdns_lookup_delegated_service(const char *instance, const char *servic
         return ESP_ERR_INVALID_ARG;
     }
     mdns_priv_service_lock();
-    *result = lookup_service(instance, service, proto, max_results, false);
+    *result = lookup_service(instance, service, proto, NULL, max_results, false);
+    mdns_priv_service_unlock();
+    return ESP_OK;
+}
+
+esp_err_t mdns_lookup_delegated_service_with_subtype(const char *instance, const char *service, const char *proto,
+                                                     const char *subtype, size_t max_results, mdns_result_t **result)
+{
+    if (!s_server) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    if (!result || mdns_utils_str_null_or_empty(service) || mdns_utils_str_null_or_empty(proto) ||
+            mdns_utils_str_null_or_empty(subtype)) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    mdns_priv_service_lock();
+    *result = lookup_service(instance, service, proto, subtype, max_results, false);
     mdns_priv_service_unlock();
     return ESP_OK;
 }
@@ -1553,7 +1708,23 @@ esp_err_t mdns_lookup_selfhosted_service(const char *instance, const char *servi
         return ESP_ERR_INVALID_ARG;
     }
     mdns_priv_service_lock();
-    *result = lookup_service(instance, service, proto, max_results, true);
+    *result = lookup_service(instance, service, proto, NULL, max_results, true);
+    mdns_priv_service_unlock();
+    return ESP_OK;
+}
+
+esp_err_t mdns_lookup_selfhosted_service_with_subtype(const char *instance, const char *service, const char *proto,
+                                                      const char *subtype, size_t max_results, mdns_result_t **result)
+{
+    if (!s_server) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    if (!result || mdns_utils_str_null_or_empty(service) || mdns_utils_str_null_or_empty(proto) ||
+            mdns_utils_str_null_or_empty(subtype)) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    mdns_priv_service_lock();
+    *result = lookup_service(instance, service, proto, subtype, max_results, true);
     mdns_priv_service_unlock();
     return ESP_OK;
 }

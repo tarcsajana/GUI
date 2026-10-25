@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2015-2025 Espressif Systems (Shanghai) CO LTD
+ * SPDX-FileCopyrightText: 2015-2026 Espressif Systems (Shanghai) CO LTD
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -15,7 +15,10 @@ static const char *TAG = "mdns_utils";
 static const char *MDNS_DEFAULT_DOMAIN = "local";
 static const char *MDNS_SUB_STR = "_sub";
 
-const uint8_t *mdns_utils_read_fqdn(const uint8_t *packet, const uint8_t *start, mdns_name_t *name, char *buf, size_t packet_len)
+#define MDNS_FQDN_MAX_COMPRESSION_DEPTH 16
+
+static const uint8_t *mdns_utils_read_fqdn_impl(const uint8_t *packet, const uint8_t *start, mdns_name_t *name,
+                                                char *buf, size_t packet_len, unsigned compression_depth)
 {
     size_t index = 0;
     const uint8_t *packet_end = packet + packet_len;
@@ -48,24 +51,44 @@ const uint8_t *mdns_utils_read_fqdn(const uint8_t *packet, const uint8_t *start,
                 strlcat(name->host, ".", sizeof(name->host));
                 strlcat(name->host, buf, sizeof(name->host));
             } else if (strcasecmp(buf, MDNS_SUB_STR) == 0) {
-                name->sub = 1;
+                // A DNS-SD subtype name has the form <subtype>._sub.<service>.<proto>.<domain>.
+                // Keep the subtype label in host, but reject _sub in any other position.
+                if (name->parts != 1 || name->sub) {
+                    name->invalid = true;
+                } else {
+                    name->sub = 1;
+                }
             } else if (!name->invalid) {
                 char *mdns_name_ptrs[] = {name->host, name->service, name->proto, name->domain};
                 memcpy(mdns_name_ptrs[name->parts++], buf, len + 1);
             }
         } else {
+            if (start + index >= packet_end) {
+                // truncated compression pointer (second byte would be out of bounds)
+                return NULL;
+            }
             size_t address = (((uint16_t)len & 0x3F) << 8) | start[index++];
             if ((packet + address) >= start) {
                 //reference address can not be after where we are
                 return NULL;
             }
-            if (mdns_utils_read_fqdn(packet, packet + address, name, buf, packet_len)) {
+            if (compression_depth >= MDNS_FQDN_MAX_COMPRESSION_DEPTH) {
+                return NULL;
+            }
+            if (mdns_utils_read_fqdn_impl(packet, packet + address, name, buf, packet_len,
+                                          compression_depth + 1)) {
                 return start + index;
             }
             return NULL;
         }
     }
     return start + index + 1;
+}
+
+const uint8_t *mdns_utils_read_fqdn(const uint8_t *packet, const uint8_t *start, mdns_name_t *name, char *buf,
+                                    size_t packet_len)
+{
+    return mdns_utils_read_fqdn_impl(packet, start, name, buf, packet_len, 0);
 }
 
 const uint8_t *mdns_utils_parse_fqdn(const uint8_t *packet, const uint8_t *start, mdns_name_t *name, size_t packet_len)
@@ -83,6 +106,9 @@ const uint8_t *mdns_utils_parse_fqdn(const uint8_t *packet, const uint8_t *start
     const uint8_t *next_data = (uint8_t *) mdns_utils_read_fqdn(packet, start, name, buf, packet_len);
     if (!next_data) {
         return 0;
+    }
+    if (name->sub && name->parts != 4) {
+        name->invalid = true;
     }
     if (!name->parts || name->invalid) {
         return next_data;
@@ -267,4 +293,15 @@ uint8_t mdns_utils_append_u16(uint8_t *packet, uint16_t *index, uint16_t value)
     mdns_utils_append_u8(packet, index, (value >> 8) & 0xFF);
     mdns_utils_append_u8(packet, index, value & 0xFF);
     return 2;
+}
+
+void mdns_utils_free_txt_linked_list(mdns_txt_linked_item_t *txt)
+{
+    while (txt) {
+        mdns_txt_linked_item_t *next = txt->next;
+        mdns_mem_free((char *)txt->key);
+        mdns_mem_free(txt->value);
+        mdns_mem_free(txt);
+        txt = next;
+    }
 }

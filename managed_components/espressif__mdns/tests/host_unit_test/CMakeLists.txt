@@ -12,7 +12,7 @@ project(mdns_host_unit_test C)
 
 # Set ENABLE_UNIT_TESTS with a default of OFF
 if(NOT DEFINED UNIT_TESTS)
-    set(UNIT_TESTS "OFF" CACHE STRING "Unit tests: OFF, test_receiver, test_sender")
+    set(UNIT_TESTS "OFF" CACHE STRING "Unit tests: OFF, test_receiver, test_sender, test_cache, test_browse")
 else()
     set(ENABLE_UNIT_TESTS 1)
     message(STATUS "Unit testing enabled with UNIT_TESTS=${UNIT_TESTS}")
@@ -63,6 +63,7 @@ set(SOURCES
     ${MDNS_DIR}/mdns_send.c
     ${MDNS_DIR}/mdns_pcb.c
     ${MDNS_DIR}/mdns_netif.c
+    ${MDNS_DIR}/mdns_cache.c
 )
 
 if(ENABLE_UNIT_TESTS)
@@ -79,6 +80,12 @@ if(LIB_BSD)
     target_link_libraries(${PROJECT_NAME} PRIVATE ${LIB_BSD})
 elseif(NOT CMAKE_HOST_SYSTEM_NAME STREQUAL "Darwin")
     message(WARNING "Missing LIBBSD library. Install libbsd-dev package and/or check linker directories.")
+endif()
+
+# Sanitizers for AFL fuzzing (unit tests enable these in unity/enable_testing.cmake)
+if(NOT ENABLE_UNIT_TESTS)
+    target_compile_options(${PROJECT_NAME} PRIVATE -fsanitize=address -fsanitize=undefined)
+    target_link_options(${PROJECT_NAME} PRIVATE -fsanitize=address -fsanitize=undefined)
 endif()
 
 # Enable testing if unit tests are enabled
