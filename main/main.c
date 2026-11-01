@@ -291,6 +291,7 @@ extern lv_obj_t * ui_SOC;
 extern lv_obj_t * ui_Range;
 extern lv_obj_t * ui_SOCbar;
 extern lv_obj_t * ui_battw;
+extern lv_obj_t * ui_kwbar;
 extern lv_obj_t * ui_battamps;
 extern lv_obj_t * ui_celltemp;
 extern lv_obj_t * ui_volts;
@@ -321,6 +322,92 @@ static const uint64_t DATA_TIMEOUT_MS = 20000;  // 20 seconds timeout
 static int32_t battw_arc_last = 0;
 static int32_t battw_label_last_tenths = 0;
 
+static lv_color_t info_red(void)
+{
+    return lv_color_hex(0xFF3B30);
+}
+
+static lv_color_t info_orange(void)
+{
+    return lv_color_hex(0xFFA500);
+}
+
+static lv_color_t info_green(void)
+{
+    return lv_color_hex(0x00C853);
+}
+
+static void set_gauge_status(lv_obj_t *arc, lv_obj_t *label, lv_color_t color)
+{
+    if (arc != NULL) {
+        lv_obj_set_style_arc_color(arc, color, LV_PART_INDICATOR | LV_STATE_DEFAULT);
+    }
+    if (label != NULL) {
+        lv_obj_set_style_text_color(label, color, LV_PART_MAIN | LV_STATE_DEFAULT);
+    }
+}
+
+static lv_color_t power_status_color(float kw)
+{
+    if (kw >= 40.0f) {
+        return info_red();
+    }
+    if (kw >= 15.0f) {
+        return info_orange();
+    }
+    if (kw >= 0.0f) {
+        return info_green();
+    }
+    return info_red();
+}
+
+static lv_color_t current_status_color(float amp)
+{
+    if (amp >= 100.0f) {
+        return info_red();
+    }
+    if (amp >= 40.0f) {
+        return info_orange();
+    }
+    if (amp >= 0.0f) {
+        return info_green();
+    }
+    return info_red();
+}
+
+static lv_color_t temp_status_color(float temp_c)
+{
+    if (temp_c >= 45.0f) {
+        return info_red();
+    }
+    if (temp_c >= 35.0f || temp_c <= 10.0f) {
+        return info_orange();
+    }
+    return info_green();
+}
+
+static lv_color_t volt_status_color(float volt)
+{
+    if (volt < 310.0f || volt > 355.0f) {
+        return info_red();
+    }
+    if (volt < 325.0f || volt > 345.0f) {
+        return info_orange();
+    }
+    return info_green();
+}
+
+static lv_color_t soc_status_color(int soc_val)
+{
+    if (soc_val <= 10) {
+        return info_red();
+    }
+    if (soc_val <= 25) {
+        return info_orange();
+    }
+    return info_green();
+}
+
 static void update_power_display_animated(float watt)
 {
     float clamped_watt = (watt < -60000.0f) ? -60000.0f : (watt > 60000.0f) ? 60000.0f : watt;
@@ -330,12 +417,18 @@ static void update_power_display_animated(float watt)
 
     if (ui_battw != NULL) {
         lv_arc_set_value(ui_battw, (int)target_arc);
-
-        if (target_arc >= 0) {
-            lv_obj_set_style_arc_color(ui_battw, lv_color_hex(0x00FF00), LV_PART_INDICATOR | LV_STATE_DEFAULT);
-        } else {
-            lv_obj_set_style_arc_color(ui_battw, lv_color_hex(0xFF0000), LV_PART_INDICATOR | LV_STATE_DEFAULT);
+    }
+    set_gauge_status(ui_battw, ui_labelbattw, power_status_color(kw));
+    if (ui_kwbar != NULL) {
+        int kw_bar = (int)(-kw);
+        if (kw_bar > 60) {
+            kw_bar = 60;
         }
+        if (kw_bar < -60) {
+            kw_bar = -60;
+        }
+        lv_bar_set_value(ui_kwbar, kw_bar, LV_ANIM_OFF);
+        lv_obj_set_style_bg_color(ui_kwbar, power_status_color(kw), LV_PART_INDICATOR | LV_STATE_DEFAULT);
     }
 
     if (ui_labelbattw != NULL) {
@@ -553,8 +646,11 @@ void ui_update_task_with_consumption(void *pvParameters) {
                 // Validate UI objects before using them
                         if (ui_SOC != NULL) {
                             char soc_text[16];
+                            int soc_shown = (int)data.soc;
+                            soc_shown = (soc_shown < 0) ? 0 : (soc_shown > 100) ? 100 : soc_shown;
                             snprintf(soc_text, sizeof(soc_text), "%.1f%%", data.soc);
                             lv_label_set_text(ui_SOC, soc_text);
+                            lv_obj_set_style_text_color(ui_SOC, soc_status_color(soc_shown), LV_PART_MAIN | LV_STATE_DEFAULT);
                         }
                     
                         
@@ -562,21 +658,7 @@ void ui_update_task_with_consumption(void *pvParameters) {
                         int soc_val = (int)data.soc;
                         soc_val = (soc_val < 0) ? 0 : (soc_val > 100) ? 100 : soc_val;
                         lv_bar_set_value(ui_SOCbar, soc_val, LV_ANIM_OFF);
-
-                        // Set color based on SOC range
-                        lv_color_t bar_color;
-
-                    if (soc_val <= 10) {
-                        bar_color = lv_color_hex(0xFF0000); // Red
-                    } else if (soc_val <= 25) {
-                        bar_color = lv_color_hex(0xFFA500); // Orange
-                    } else if (soc_val > 90) {
-                        bar_color = lv_color_hex(0x00FF00); // Green
-                    } else {
-                        bar_color = lv_color_hex(0x3366CC); // Default/original color (adjust if needed)
-                    }
-
-                    lv_obj_set_style_bg_color(ui_SOCbar, bar_color, LV_PART_INDICATOR | LV_STATE_DEFAULT);
+                        lv_obj_set_style_bg_color(ui_SOCbar, soc_status_color(soc_val), LV_PART_INDICATOR | LV_STATE_DEFAULT);
                 }
                 
                 if (ui_Range != NULL) {
@@ -594,11 +676,11 @@ void ui_update_task_with_consumption(void *pvParameters) {
                 }
                 
                 if (ui_battamps != NULL) {
-                    // Update arc value for amps (-150A to +150A range)
                     int amp_arc_value = (int)data.amp;
                     amp_arc_value = (amp_arc_value < 0) ? 0 : (amp_arc_value > 100) ? 100 : amp_arc_value;
                     lv_arc_set_value(ui_battamps, amp_arc_value);
                 }
+                set_gauge_status(ui_battamps, NULL, current_status_color(data.amp));
                 
                 if (ui_labelcelltemp != NULL) {
                     char temp_text[16];
@@ -612,22 +694,9 @@ void ui_update_task_with_consumption(void *pvParameters) {
                     temp_arc_value = (temp_arc_value < -10) ? -10 : (temp_arc_value > 100) ? 100 : temp_arc_value;
 
                     // Set arc value (e.g., shift -10 to 0 range into 0–100 for arc if needed)
-                    lv_arc_set_value(ui_celltemp, temp_arc_value);  // Optional: map range depending on your arc min/max
-
-                    // Set arc color based on temperature range
-                    lv_color_t arc_color;
-                    if (temp_arc_value <= 10) {
-                        arc_color = lv_color_hex(0x0000FF); // Blue
-                    } else if (temp_arc_value <= 20) {
-                        arc_color = lv_color_hex(0x90EE90); // Light Green
-                    } else if (temp_arc_value <= 35) {
-                        arc_color = lv_color_hex(0x00FF00); // Green
-                    } else {
-                        arc_color = lv_color_hex(0xFF0000); // Red
-                    }
-
-                    lv_obj_set_style_arc_color(ui_celltemp, arc_color, LV_PART_INDICATOR | LV_STATE_DEFAULT);
+                    lv_arc_set_value(ui_celltemp, temp_arc_value);
                 }
+                set_gauge_status(ui_celltemp, NULL, temp_status_color(data.temp));
                                 
                 if (ui_labelvolt != NULL) {
                     char volt_text[16];
@@ -641,6 +710,7 @@ void ui_update_task_with_consumption(void *pvParameters) {
                     volt_arc_value = (volt_arc_value < 0) ? 0 : (volt_arc_value > 370) ? 370 : volt_arc_value;
                     lv_arc_set_value(ui_volts, volt_arc_value);
                 }
+                set_gauge_status(ui_volts, NULL, volt_status_color(data.volt));
 
                 if (uic_consumption_label != NULL) {
                     char consumption_text[32];

@@ -36,6 +36,7 @@ extern void ui_event_Button1(lv_event_t * e);
 extern lv_obj_t * ui_Button1;
 extern lv_obj_t * ui_Label16;
 extern lv_obj_t * ui_Label14;
+extern lv_obj_t * ui_kwbar;
 // CUSTOM VARIABLES
 extern lv_obj_t * uic_Livedata;
 extern lv_obj_t * uic_SOCbar;

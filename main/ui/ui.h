@@ -35,10 +35,16 @@ LV_IMG_DECLARE(
     ui_img_111926670);    // assets/[CITYPNG.COM]Download Power On Off White Button Icon PNG - 600x600_resized.png
 LV_IMG_DECLARE(ui_img_plus_png);    // assets/plus.png
 LV_IMG_DECLARE(ui_img_minus_png);    // assets/minus.png
+LV_IMG_DECLARE(ui_img_imiev_png);    // assets/imiev.png
 
 // UI INIT
 void ui_init(void);
 void ui_destroy(void);
+void ui_style_screen(lv_obj_t * screen);
+void ui_style_button(lv_obj_t * btn, uint32_t bg_hex);
+void ui_style_gauge(lv_obj_t * arc, uint32_t color_hex);
+void ui_style_value(lv_obj_t * label);
+void ui_style_caption(lv_obj_t * label);
 
 #ifdef __cplusplus
 } /*extern "C"*/

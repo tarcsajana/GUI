@@ -25,6 +25,49 @@ lv_obj_t * ui____initial_actions0;
 
 ///////////////////// FUNCTIONS ////////////////////
 
+void ui_style_screen(lv_obj_t * screen)
+{
+    lv_obj_set_style_bg_img_src(screen, NULL, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(screen, lv_color_hex(0x000000), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_opa(screen, LV_OPA_COVER, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_color(screen, lv_color_hex(0xFFFFFF), LV_PART_MAIN | LV_STATE_DEFAULT);
+}
+
+void ui_style_button(lv_obj_t * btn, uint32_t bg_hex)
+{
+    lv_obj_set_style_radius(btn, 28, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(btn, lv_color_hex(bg_hex), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_shadow_width(btn, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_border_width(btn, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+}
+
+void ui_style_gauge(lv_obj_t * arc, uint32_t color_hex)
+{
+    lv_obj_set_style_arc_width(arc, 16, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_arc_width(arc, 16, LV_PART_INDICATOR | LV_STATE_DEFAULT);
+    lv_obj_set_style_arc_rounded(arc, true, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_arc_rounded(arc, true, LV_PART_INDICATOR | LV_STATE_DEFAULT);
+    lv_obj_set_style_arc_color(arc, lv_color_hex(0x243044), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_arc_color(arc, lv_color_hex(color_hex), LV_PART_INDICATOR | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_opa(arc, LV_OPA_TRANSP, LV_PART_KNOB | LV_STATE_DEFAULT);
+    lv_obj_set_style_pad_all(arc, 0, LV_PART_KNOB | LV_STATE_DEFAULT);
+    lv_obj_clear_flag(arc, LV_OBJ_FLAG_CLICKABLE);
+}
+
+void ui_style_value(lv_obj_t * label)
+{
+    lv_obj_set_style_text_color(label, lv_color_hex(0xF8FAFC), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_clear_flag(label, LV_OBJ_FLAG_CLICKABLE);
+}
+
+void ui_style_caption(lv_obj_t * label)
+{
+    lv_obj_set_style_text_color(label, lv_color_hex(0xA1A1A6), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_clear_flag(label, LV_OBJ_FLAG_CLICKABLE);
+}
+
 ///////////////////// SCREENS ////////////////////
 
 void ui_init(void)
