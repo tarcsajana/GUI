@@ -36,6 +36,7 @@ LV_IMG_DECLARE(
 LV_IMG_DECLARE(ui_img_plus_png);    // assets/plus.png
 LV_IMG_DECLARE(ui_img_minus_png);    // assets/minus.png
 LV_IMG_DECLARE(ui_img_imiev_png);    // assets/imiev.png
+LV_IMG_DECLARE(ui_img_imiev_charge_png);    // assets/imiev_charge.png
 
 // UI INIT
 void ui_init(void);

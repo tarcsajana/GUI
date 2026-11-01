@@ -278,6 +278,7 @@ typedef struct {
     float watt;
     float consumption;  // Add this field
     float speed;        // Add this field
+    uint8_t charging;   // 1 when UDP key is not Ready (254)
 } sensor_data_t;
 
 static QueueHandle_t sensor_data_queue = NULL;
@@ -299,6 +300,9 @@ extern lv_obj_t * ui_labelbattw;
 extern lv_obj_t * ui_labelbattamps;
 extern lv_obj_t * ui_labelcelltemp;
 extern lv_obj_t * ui_labelvolt;
+extern lv_obj_t * ui_Label1;
+extern lv_obj_t * ui_Label4;
+extern lv_obj_t * ui_chargeimg;
 extern lv_obj_t * ui_wifi;
 extern lv_obj_t * ui_Label23;
 extern lv_obj_t * uic_clock_time;   // Time display label
@@ -347,6 +351,18 @@ static void set_gauge_status(lv_obj_t *arc, lv_obj_t *label, lv_color_t color)
     }
 }
 
+static void set_obj_hidden(lv_obj_t *obj, bool hidden)
+{
+    if (obj == NULL) {
+        return;
+    }
+    if (hidden) {
+        lv_obj_add_flag(obj, LV_OBJ_FLAG_HIDDEN);
+    } else {
+        lv_obj_clear_flag(obj, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
 static lv_color_t power_status_color(float kw)
 {
     if (kw >= 40.0f) {
@@ -392,17 +408,6 @@ static lv_color_t volt_status_color(float volt)
         return info_red();
     }
     if (volt < 325.0f || volt > 345.0f) {
-        return info_orange();
-    }
-    return info_green();
-}
-
-static lv_color_t soc_status_color(int soc_val)
-{
-    if (soc_val <= 10) {
-        return info_red();
-    }
-    if (soc_val <= 25) {
         return info_orange();
     }
     return info_green();
@@ -646,11 +651,11 @@ void ui_update_task_with_consumption(void *pvParameters) {
                 // Validate UI objects before using them
                         if (ui_SOC != NULL) {
                             char soc_text[16];
-                            int soc_shown = (int)data.soc;
-                            soc_shown = (soc_shown < 0) ? 0 : (soc_shown > 100) ? 100 : soc_shown;
                             snprintf(soc_text, sizeof(soc_text), "%.1f%%", data.soc);
                             lv_label_set_text(ui_SOC, soc_text);
-                            lv_obj_set_style_text_color(ui_SOC, soc_status_color(soc_shown), LV_PART_MAIN | LV_STATE_DEFAULT);
+                            if (ui_SOCbar != NULL) {
+                                lv_obj_align_to(ui_SOC, ui_SOCbar, LV_ALIGN_OUT_LEFT_MID, -8, 0);
+                            }
                         }
                     
                         
@@ -658,12 +663,11 @@ void ui_update_task_with_consumption(void *pvParameters) {
                         int soc_val = (int)data.soc;
                         soc_val = (soc_val < 0) ? 0 : (soc_val > 100) ? 100 : soc_val;
                         lv_bar_set_value(ui_SOCbar, soc_val, LV_ANIM_OFF);
-                        lv_obj_set_style_bg_color(ui_SOCbar, soc_status_color(soc_val), LV_PART_INDICATOR | LV_STATE_DEFAULT);
                 }
                 
                 if (ui_Range != NULL) {
                     char range_text[16];
-                    snprintf(range_text, sizeof(range_text), "%.1f km", data.range);
+                    snprintf(range_text, sizeof(range_text), "%.0f km", data.range);
                     lv_label_set_text(ui_Range, range_text);
                 }
                 
@@ -680,7 +684,7 @@ void ui_update_task_with_consumption(void *pvParameters) {
                     amp_arc_value = (amp_arc_value < 0) ? 0 : (amp_arc_value > 100) ? 100 : amp_arc_value;
                     lv_arc_set_value(ui_battamps, amp_arc_value);
                 }
-                set_gauge_status(ui_battamps, NULL, current_status_color(data.amp));
+                set_gauge_status(ui_battamps, ui_labelbattamps, current_status_color(data.amp));
                 
                 if (ui_labelcelltemp != NULL) {
                     char temp_text[16];
@@ -696,7 +700,7 @@ void ui_update_task_with_consumption(void *pvParameters) {
                     // Set arc value (e.g., shift -10 to 0 range into 0–100 for arc if needed)
                     lv_arc_set_value(ui_celltemp, temp_arc_value);
                 }
-                set_gauge_status(ui_celltemp, NULL, temp_status_color(data.temp));
+                set_gauge_status(ui_celltemp, ui_labelcelltemp, temp_status_color(data.temp));
                                 
                 if (ui_labelvolt != NULL) {
                     char volt_text[16];
@@ -710,7 +714,14 @@ void ui_update_task_with_consumption(void *pvParameters) {
                     volt_arc_value = (volt_arc_value < 0) ? 0 : (volt_arc_value > 370) ? 370 : volt_arc_value;
                     lv_arc_set_value(ui_volts, volt_arc_value);
                 }
-                set_gauge_status(ui_volts, NULL, volt_status_color(data.volt));
+                set_gauge_status(ui_volts, ui_labelvolt, volt_status_color(data.volt));
+
+                bool charging = data.charging != 0;
+                set_obj_hidden(ui_chargeimg, !charging);
+                set_obj_hidden(ui_Label4, !charging);
+                set_obj_hidden(ui_labelvolt, !charging);
+                set_obj_hidden(ui_Label1, !charging);
+                set_obj_hidden(ui_labelbattamps, !charging);
 
                 if (uic_consumption_label != NULL) {
                     char consumption_text[32];
@@ -754,9 +765,10 @@ void ui_update_task_with_consumption(void *pvParameters) {
 }
 
 // Enhanced process_received_data function with trip statistics
-void process_received_data_with_consumption(float soc_in, float range, float temp, float amp, float volt, float watt, float speed_kmh) {
-    ESP_LOGI("DATA", "Received data - SOC: %.1f%%, Range: %.1f km, Temp: %.1f°C, Amp: %.1f A, Volt: %.1f V, Watt: %.1f W, Speed: %.1f km/h", 
-             soc_in, range, temp, amp, volt, watt, speed_kmh);
+void process_received_data_with_consumption(float soc_in, float range, float temp, float amp, float volt, float watt, float speed_kmh, float key_state) {
+    int charging = ((int)(key_state + 0.5f) != 254);
+    ESP_LOGI("DATA", "Received data - SOC: %.1f%%, Range: %.1f km, Temp: %.1f°C, Amp: %.1f A, Volt: %.1f V, Watt: %.1f W, Speed: %.1f km/h, Key: %.0f", 
+             soc_in, range, temp, amp, volt, watt, speed_kmh, key_state);
     
     // Update timestamp when data is received
     last_data_received_time = esp_timer_get_time() / 1000;  // Convert to milliseconds
@@ -800,7 +812,8 @@ void process_received_data_with_consumption(float soc_in, float range, float tem
         .watt = watt,
         .consumption = current_consumption,
         // store negative speed to indicate invalid/unavailable speed
-        .speed = speed_valid ? speed_kmh : -1.0f
+        .speed = speed_valid ? speed_kmh : -1.0f,
+        .charging = charging ? 1 : 0
     };
     
     // Keep only the newest sample so the UI never lags behind old telemetry.
@@ -1142,6 +1155,7 @@ void udp_server_task(void *pvParameters) {
                 cJSON *battV_item = cJSON_GetObjectItem(json, "battV");
                 cJSON *battW_item = cJSON_GetObjectItem(json, "battW");
                 cJSON *speed_item = cJSON_GetObjectItem(json, "speed_kmh");  // Changed from "speed" to "speed_kmh"
+                cJSON *key_item = cJSON_GetObjectItem(json, "key");
 
                 // Check if all required fields exist and are numbers
                 if (cJSON_IsNumber(soc_item) && cJSON_IsNumber(range_item) && 
@@ -1160,7 +1174,11 @@ void udp_server_task(void *pvParameters) {
                     if (cJSON_IsNumber(speed_item)) {
                         speed = (float)speed_item->valuedouble;
                     }
-                     process_received_data_with_consumption(soc, range, temp, battA, battV, battW, speed);
+                    float key_state = 254.0f;
+                    if (cJSON_IsNumber(key_item)) {
+                        key_state = (float)key_item->valuedouble;
+                    }
+                     process_received_data_with_consumption(soc, range, temp, battA, battV, battW, speed, key_state);
                 } else {
                     ESP_LOGW("UDP", "JSON missing required fields or invalid types");
                 }
@@ -1255,7 +1273,12 @@ void app_main() {
         ui_init();
         
         // Initialize default values with null checks
-        if (ui_SOC != NULL) lv_label_set_text(ui_SOC, "0.0%");
+        if (ui_SOC != NULL) {
+            lv_label_set_text(ui_SOC, "0.0%");
+            if (ui_SOCbar != NULL) {
+                lv_obj_align_to(ui_SOC, ui_SOCbar, LV_ALIGN_OUT_LEFT_MID, -8, 0);
+            }
+        }
         if (ui_Range != NULL) lv_label_set_text(ui_Range, "0 km");
         if (ui_labelbattw != NULL) lv_label_set_text(ui_labelbattw, "0.0");
         if (ui_labelbattamps != NULL) lv_label_set_text(ui_labelbattamps, "0.0");
