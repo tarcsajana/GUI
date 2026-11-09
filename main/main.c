@@ -290,7 +290,9 @@ static const int WIFI_MAXIMUM_RETRY = 5;
 // Add these extern declarations to access UI elements
 extern lv_obj_t * ui_SOC;
 extern lv_obj_t * ui_Range;
+extern lv_obj_t * ui_range_unit;
 extern lv_obj_t * ui_SOCbar;
+extern lv_obj_t * ui_soc_cap;
 extern lv_obj_t * ui_battw;
 extern lv_obj_t * ui_kwbar;
 extern lv_obj_t * ui_battamps;
@@ -365,16 +367,18 @@ static void set_obj_hidden(lv_obj_t *obj, bool hidden)
 
 static lv_color_t power_status_color(float kw)
 {
-    if (kw >= 40.0f) {
-        return info_red();
+    return (kw < 0.0f) ? info_red() : info_green();
+}
+
+static void set_battery_icon_color(lv_color_t color)
+{
+    if (ui_SOCbar != NULL) {
+        lv_obj_set_style_border_color(ui_SOCbar, color, LV_PART_MAIN | LV_STATE_DEFAULT);
+        lv_obj_set_style_bg_color(ui_SOCbar, color, LV_PART_INDICATOR | LV_STATE_DEFAULT);
     }
-    if (kw >= 15.0f) {
-        return info_orange();
+    if (ui_soc_cap != NULL) {
+        lv_obj_set_style_bg_color(ui_soc_cap, color, LV_PART_MAIN | LV_STATE_DEFAULT);
     }
-    if (kw >= 0.0f) {
-        return info_green();
-    }
-    return info_red();
 }
 
 static lv_color_t current_status_color(float amp)
@@ -389,17 +393,6 @@ static lv_color_t current_status_color(float amp)
         return info_green();
     }
     return info_red();
-}
-
-static lv_color_t temp_status_color(float temp_c)
-{
-    if (temp_c >= 45.0f) {
-        return info_red();
-    }
-    if (temp_c >= 35.0f || temp_c <= 10.0f) {
-        return info_orange();
-    }
-    return info_green();
 }
 
 static lv_color_t volt_status_color(float volt)
@@ -653,9 +646,6 @@ void ui_update_task_with_consumption(void *pvParameters) {
                             char soc_text[16];
                             snprintf(soc_text, sizeof(soc_text), "%.1f%%", data.soc);
                             lv_label_set_text(ui_SOC, soc_text);
-                            if (ui_SOCbar != NULL) {
-                                lv_obj_align_to(ui_SOC, ui_SOCbar, LV_ALIGN_OUT_LEFT_MID, -8, 0);
-                            }
                         }
                     
                         
@@ -663,11 +653,12 @@ void ui_update_task_with_consumption(void *pvParameters) {
                         int soc_val = (int)data.soc;
                         soc_val = (soc_val < 0) ? 0 : (soc_val > 100) ? 100 : soc_val;
                         lv_bar_set_value(ui_SOCbar, soc_val, LV_ANIM_OFF);
+                        set_battery_icon_color(soc_val < 30 ? info_red() : lv_color_hex(0xFFFFFF));
                 }
                 
                 if (ui_Range != NULL) {
                     char range_text[16];
-                    snprintf(range_text, sizeof(range_text), "%.0f km", data.range);
+                    snprintf(range_text, sizeof(range_text), "%.0f", data.range);
                     lv_label_set_text(ui_Range, range_text);
                 }
                 
@@ -691,6 +682,7 @@ void ui_update_task_with_consumption(void *pvParameters) {
                     snprintf(temp_text, sizeof(temp_text), "%.1f°C", data.temp);
                     lv_label_set_text(ui_labelcelltemp, temp_text);
                 }
+                ui_livedata_refresh_header();
                 
                 if (ui_celltemp != NULL) {
                     // Clamp temperature to safe display range
@@ -700,7 +692,6 @@ void ui_update_task_with_consumption(void *pvParameters) {
                     // Set arc value (e.g., shift -10 to 0 range into 0–100 for arc if needed)
                     lv_arc_set_value(ui_celltemp, temp_arc_value);
                 }
-                set_gauge_status(ui_celltemp, ui_labelcelltemp, temp_status_color(data.temp));
                                 
                 if (ui_labelvolt != NULL) {
                     char volt_text[16];
@@ -1275,11 +1266,9 @@ void app_main() {
         // Initialize default values with null checks
         if (ui_SOC != NULL) {
             lv_label_set_text(ui_SOC, "0.0%");
-            if (ui_SOCbar != NULL) {
-                lv_obj_align_to(ui_SOC, ui_SOCbar, LV_ALIGN_OUT_LEFT_MID, -8, 0);
-            }
         }
-        if (ui_Range != NULL) lv_label_set_text(ui_Range, "0 km");
+        if (ui_Range != NULL) lv_label_set_text(ui_Range, "0");
+        ui_livedata_refresh_header();
         if (ui_labelbattw != NULL) lv_label_set_text(ui_labelbattw, "0.0");
         if (ui_labelbattamps != NULL) lv_label_set_text(ui_labelbattamps, "0.0");
         if (ui_labelcelltemp != NULL) lv_label_set_text(ui_labelcelltemp, "0.0°C");

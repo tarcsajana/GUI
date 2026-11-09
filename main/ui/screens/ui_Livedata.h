@@ -17,6 +17,8 @@ extern lv_obj_t * ui_Livedata;
 extern lv_obj_t * ui_SOCbar;
 extern lv_obj_t * ui_SOC;
 extern lv_obj_t * ui_Range;
+extern lv_obj_t * ui_range_unit;
+extern lv_obj_t * ui_soc_cap;
 extern lv_obj_t * ui_battw;
 extern lv_obj_t * ui_battamps;
 extern lv_obj_t * ui_celltemp;
@@ -37,6 +39,7 @@ extern lv_obj_t * ui_Button1;
 extern lv_obj_t * ui_Label16;
 extern lv_obj_t * ui_Label14;
 extern lv_obj_t * ui_kwbar;
+extern void ui_livedata_refresh_header(void);
 // CUSTOM VARIABLES
 extern lv_obj_t * uic_Livedata;
 extern lv_obj_t * uic_SOCbar;
